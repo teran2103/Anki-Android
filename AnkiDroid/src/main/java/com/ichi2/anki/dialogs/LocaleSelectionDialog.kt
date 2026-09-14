@@ -1,18 +1,5 @@
-/*
- Copyright (c) 2020 David Allison <davidallisongithub@gmail.com>
+// SPDX-License-Identifier: GPL-3.0-or-later
 
- This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU General Public License as published by the Free Software
- Foundation; either version 3 of the License, or (at your option) any later
- version.
-
- This program is distributed in the hope that it will be useful, but WITHOUT ANY
- WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
- PARTICULAR PURPOSE. See the GNU General Public License for more details.
-
- You should have received a copy of the GNU General Public License along with
- this program.  If not, see <http://www.gnu.org/licenses/>.
- */
 package com.ichi2.anki.dialogs
 
 import android.app.Dialog
@@ -27,10 +14,10 @@ import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.SearchView
 import androidx.appcompat.widget.Toolbar
-import androidx.core.os.bundleOf
 import androidx.recyclerview.widget.RecyclerView
 import com.ichi2.anki.R
 import com.ichi2.anki.analytics.AnalyticsDialogFragment
+import com.ichi2.anki.databinding.DialogLocaleSelectionBinding
 import com.ichi2.anki.dialogs.LocaleSelectionDialog.LocaleListAdapter.TextViewHolder
 import com.ichi2.anki.servicelayer.LanguageHintService
 import com.ichi2.ui.AccessibleSearchView
@@ -53,16 +40,13 @@ class LocaleSelectionDialog : AnalyticsDialogFragment() {
                 Locale.getAvailableLocales() + IPALanguage,
                 ::sendSelectionResult,
             )
-        val dialogView = layoutInflater.inflate(R.layout.locale_selection_dialog, null)
-        dialogView
-            .findViewById<RecyclerView>(R.id.locale_dialog_selection_list)
-            .adapter = localeAdapter
-        dialogView
-            .findViewById<Toolbar>(R.id.locale_dialog_selection_toolbar)
-            .setupMenuWith(localeAdapter)
+
+        val binding = DialogLocaleSelectionBinding.inflate(layoutInflater)
+        binding.localeDialogSelectionList.adapter = localeAdapter
+        binding.localeDialogSelectionToolbar.setupMenuWith(localeAdapter)
         return AlertDialog.Builder(requireContext()).show {
             cancelable(true)
-            customView(dialogView)
+            customView(binding.root)
         }
     }
 
@@ -97,7 +81,7 @@ class LocaleSelectionDialog : AnalyticsDialogFragment() {
     private fun sendSelectionResult(locale: Locale? = null) {
         parentFragmentManager.setFragmentResult(
             REQUEST_HINT_LOCALE_SELECTION,
-            bundleOf(KEY_SELECTED_LOCALE to locale),
+            Bundle().apply { putSerializable(KEY_SELECTED_LOCALE, locale) },
         )
     }
 
@@ -117,7 +101,7 @@ class LocaleSelectionDialog : AnalyticsDialogFragment() {
             viewType: Int,
         ) = TextViewHolder(
             layoutInflater
-                .inflate(R.layout.locale_dialog_fragment_textview, parent, false) as TextView,
+                .inflate(R.layout.item_locale, parent, false) as TextView,
         )
 
         override fun onBindViewHolder(

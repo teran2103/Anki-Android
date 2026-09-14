@@ -1,18 +1,5 @@
-/*
- *  Copyright (c) 2025 Eric Li <ericli3690@gmail.com>
- *
- *  This program is free software; you can redistribute it and/or modify it under
- *  the terms of the GNU General Public License as published by the Free Software
- *  Foundation; either version 3 of the License, or (at your option) any later
- *  version.
- *
- *  This program is distributed in the hope that it will be useful, but WITHOUT ANY
- *  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
- *  PARTICULAR PURPOSE. See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with
- *  this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-FileCopyrightText: Copyright (c) 2025 Eric Li <ericli3690@gmail.com>
 
 package com.ichi2.anki.reviewreminders
 
@@ -21,41 +8,41 @@ import android.content.res.ColorStateList
 import android.graphics.Paint
 import android.util.TypedValue
 import android.view.LayoutInflater
-import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.materialswitch.MaterialSwitch
-import com.ichi2.anki.R
+import com.ichi2.anki.CollectionManager.TR
+import com.ichi2.anki.databinding.ItemScheduleRemindersBinding
 import com.ichi2.anki.libanki.DeckId
+import com.ichi2.anki.ui.internationalization.sentenceCase
+import com.ichi2.anki.common.android.R as CommonR
 
 class ScheduleRemindersAdapter(
     private val retrieveDeckNameFromID: (DeckId, callback: (deckName: String) -> Unit) -> Unit,
     private val retrieveCanUserAccessDeck: (DeckId, callback: (isDeckAccessible: Boolean) -> Unit) -> Unit,
-    private val toggleReminderEnabled: (ReviewReminderId, ReviewReminderScope) -> Unit,
+    private val toggleReminder: (ReviewReminder) -> Unit,
     private val editReminder: (ReviewReminder) -> Unit,
 ) : ListAdapter<ReviewReminder, ScheduleRemindersAdapter.ViewHolder>(diffCallback) {
-    inner class ViewHolder(
-        holder: View,
-    ) : RecyclerView.ViewHolder(holder) {
+    class ViewHolder(
+        binding: ItemScheduleRemindersBinding,
+    ) : RecyclerView.ViewHolder(binding.root) {
         var reminder: ReviewReminder? = null
-        val context: Context = holder.context
-        val deckTextView: TextView = holder.findViewById(R.id.reminders_list_deck_text)
-        val timeTextView: TextView = holder.findViewById(R.id.reminders_list_time_text)
-        val switchView: MaterialSwitch = holder.findViewById(R.id.reminders_list_switch)
+        val context: Context = binding.root.context
+        val deckTextView: TextView = binding.remindersListDeckText
+        val timeTextView: TextView = binding.remindersListTimeText
+        val switchView: MaterialSwitch = binding.remindersListSwitch
     }
 
     override fun onCreateViewHolder(
         parent: ViewGroup,
         viewType: Int,
     ): ViewHolder {
-        val view =
-            LayoutInflater
-                .from(parent.context)
-                .inflate(R.layout.schedule_reminders_list_item, parent, false)
-        return ViewHolder(view)
+        val inflater = LayoutInflater.from(parent.context)
+        val binding = ItemScheduleRemindersBinding.inflate(inflater, parent, false)
+        return ViewHolder(binding)
     }
 
     override fun onBindViewHolder(
@@ -70,7 +57,7 @@ class ScheduleRemindersAdapter(
         holder.itemView.setOnClickListener { editReminder(reminder) }
 
         holder.switchView.isChecked = reminder.enabled
-        holder.switchView.setOnClickListener { toggleReminderEnabled(reminder.id, reminder.scope) }
+        holder.switchView.setOnClickListener { toggleReminder(reminder) }
 
         errorReminderIfDeckNotFound(reminder.scope, holder)
     }
@@ -97,7 +84,7 @@ class ScheduleRemindersAdapter(
 
         when (scope) {
             is ReviewReminderScope.Global -> {
-                holder.deckTextView.text = holder.context.getString(R.string.card_browser_all_decks)
+                holder.deckTextView.text = with(holder.context) { TR.sentenceCase.allDecks }
                 setTextViewStrikethrough(holder.timeTextView, false)
                 setViewHolderColors(holder, activeTextColor, activeTrackColor)
             }
@@ -171,6 +158,7 @@ class ScheduleRemindersAdapter(
                 }.data
         }
 
+    @Suppress("MayBeConstant")
     companion object {
         /**
          * Theme attribute for the primary color used in the normal (non-errored-out) state of a review reminder.
@@ -190,7 +178,7 @@ class ScheduleRemindersAdapter(
          * Color of the activated switch and text of an element in the review reminder UI list when its review reminder
          * is errored-out. A deck-specific review reminder can become errored-out if its corresponding deck cannot be found.
          */
-        private val erroredReviewReminderColor: Int = R.color.material_grey_500
+        private val erroredReviewReminderColor: Int = CommonR.color.material_grey_500
 
         private val diffCallback =
             object : DiffUtil.ItemCallback<ReviewReminder>() {

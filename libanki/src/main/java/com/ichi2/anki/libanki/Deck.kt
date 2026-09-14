@@ -1,24 +1,11 @@
-/*
- * Copyright (c) 2020 Arthur Milchior <arthur@milchior.fr>
- *
- * This program is free software; you can redistribute it and/or modify it under
- * the terms of the GNU General Public License as published by the Free Software
- * Foundation; either version 3 of the License, or (at your option) any later
- * version.
- *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY
- * WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
- * PARTICULAR PURPOSE. See the GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along with
- * this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-FileCopyrightText: Copyright (c) 2020 Arthur Milchior <arthur@milchior.fr>
 
 package com.ichi2.anki.libanki
 
 import anki.decks.Deck.Filtered.SearchTerm.Order
 import com.ichi2.anki.common.utils.ext.deepClonedInto
-import com.ichi2.anki.libanki.utils.NotInLibAnki
+import com.ichi2.anki.libanki.utils.NotInPyLib
 import net.ankiweb.rsdroid.Translations
 import org.json.JSONObject
 
@@ -135,10 +122,11 @@ fun Order.toDisplayString(translations: Translations) =
         Order.REVERSE_ADDED -> translations.decksLatestAddedFirst()
         Order.RETRIEVABILITY_ASCENDING -> translations.deckConfigSortOrderRetrievabilityAscending()
         Order.RETRIEVABILITY_DESCENDING -> translations.deckConfigSortOrderRetrievabilityDescending()
+        Order.RELATIVE_OVERDUENESS -> translations.decksRelativeOverdueness()
         Order.UNRECOGNIZED -> throw IllegalArgumentException("Can't display an unknown enum value.")
     }
 
-@NotInLibAnki
+@NotInPyLib
 internal fun Deck.confOrNull(): DeckConfigId? =
     try {
         val value = getLong("conf")

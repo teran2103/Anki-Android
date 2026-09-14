@@ -1,33 +1,31 @@
-/*
- Copyright (c) 2020 David Allison <davidallisongithub@gmail.com>
+// SPDX-License-Identifier: GPL-3.0-or-later
 
- This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU General Public License as published by the Free Software
- Foundation; either version 3 of the License, or (at your option) any later
- version.
-
- This program is distributed in the hope that it will be useful, but WITHOUT ANY
- WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
- PARTICULAR PURPOSE. See the GNU General Public License for more details.
-
- You should have received a copy of the GNU General Public License along with
- this program.  If not, see <http://www.gnu.org/licenses/>.
- */
 package com.ichi2.anki
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import android.widget.EditText
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.SystemBarStyle
+import androidx.activity.enableEdgeToEdge
 import androidx.annotation.CheckResult
 import androidx.appcompat.app.AlertDialog
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat.Type.displayCutout
+import androidx.core.view.WindowInsetsCompat.Type.ime
+import androidx.core.view.WindowInsetsCompat.Type.systemBars
+import androidx.core.view.updatePadding
 import androidx.core.widget.doAfterTextChanged
-import com.ichi2.anki.databinding.CardBrowserAppearanceBinding
+import com.ichi2.anki.CollectionManager.TR
+import com.ichi2.anki.common.utils.android.showThemedToast
+import com.ichi2.anki.databinding.ActivityCardBrowserAppearanceBinding
 import com.ichi2.anki.dialogs.DiscardChangesDialog
 import com.ichi2.anki.libanki.CardTemplate
+import com.ichi2.anki.ui.internationalization.sentenceCase
 import com.ichi2.utils.message
 import com.ichi2.utils.negativeButton
 import com.ichi2.utils.positiveButton
@@ -41,8 +39,8 @@ import timber.log.Timber
  * We do not allow the user to change fonts as Android only has a handful
  * We do not allow the user to change the font size as this can be done in the Appearance settings.
  */
-class CardTemplateBrowserAppearanceEditor : AnkiActivity(R.layout.card_browser_appearance) {
-    private val binding by viewBinding(CardBrowserAppearanceBinding::bind)
+class CardTemplateBrowserAppearanceEditor : AnkiActivity(R.layout.activity_card_browser_appearance) {
+    private val binding by viewBinding(ActivityCardBrowserAppearanceBinding::bind)
 
     // start with the callback disabled as there aren't any changes yet
     private val discardChangesCallback =
@@ -57,6 +55,20 @@ class CardTemplateBrowserAppearanceEditor : AnkiActivity(R.layout.card_browser_a
             return
         }
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge(statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT))
+        ViewCompat.setOnApplyWindowInsetsListener(binding.toolbarContainer) { view, insets ->
+            val constraints = insets.getInsets(systemBars() or displayCutout())
+            view.updatePadding(left = constraints.left, right = constraints.right, top = constraints.top)
+            // don't mark as CONSUMED, it breaks the insets for the next view on lower API versions
+            insets
+        }
+        // handle the content, adds the ime in the constraints so the user can also scroll the
+        // content while keyboard is on
+        ViewCompat.setOnApplyWindowInsetsListener(binding.contentScroller) { view, insets ->
+            val constraints = insets.getInsets(systemBars() or displayCutout() or ime())
+            view.updatePadding(left = constraints.left, right = constraints.right, bottom = constraints.bottom)
+            insets
+        }
         val bundle = savedInstanceState ?: intent.extras
         if (bundle == null) {
             showThemedToast(this, getString(R.string.something_wrong), true)
@@ -115,7 +127,8 @@ class CardTemplateBrowserAppearanceEditor : AnkiActivity(R.layout.card_browser_a
 
     private fun showRestoreDefaultDialog() {
         AlertDialog.Builder(this).show {
-            positiveButton(R.string.dialog_ok) {
+            setTitle(TR.sentenceCase.restoreToDefault)
+            positiveButton(R.string.restore) {
                 restoreDefaultAndClose()
             }
             negativeButton(R.string.dialog_cancel)
@@ -136,7 +149,7 @@ class CardTemplateBrowserAppearanceEditor : AnkiActivity(R.layout.card_browser_a
         discardChangesCallback.isEnabled = hasChanges()
 
         enableToolbar()
-        setTitle(R.string.card_template_browser_appearance_title)
+        title = TR.sentenceCase.browserAppearance
     }
 
     private fun answerHasChanged(intent: Intent): Boolean = intent.getStringExtra(INTENT_ANSWER_FORMAT) != answerFormat

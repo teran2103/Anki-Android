@@ -1,18 +1,4 @@
-/*
- *  Copyright (c) 2025 David Allison <davidallisongithub@gmail.com>
- *
- *  This program is free software; you can redistribute it and/or modify it under
- *  the terms of the GNU General Public License as published by the Free Software
- *  Foundation; either version 3 of the License, or (at your option) any later
- *  version.
- *
- *  This program is distributed in the hope that it will be useful, but WITHOUT ANY
- *  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
- *  PARTICULAR PURPOSE. See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with
- *  this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 package com.ichi2.anki.dialogs
 
@@ -28,12 +14,12 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.ichi2.anki.CollectionManager.TR
 import com.ichi2.anki.R
 import com.ichi2.anki.common.annotations.NeedsTest
-import com.ichi2.anki.databinding.GradeNowListItemBinding
+import com.ichi2.anki.databinding.ItemGradeNowBinding
 import com.ichi2.anki.launchCatchingTask
 import com.ichi2.anki.libanki.CardId
 import com.ichi2.anki.observability.undoableOp
 import com.ichi2.anki.snackbar.showSnackbar
-import com.ichi2.anki.ui.internationalization.toSentenceCase
+import com.ichi2.anki.ui.internationalization.sentenceCase
 import com.ichi2.anki.undoAndShowSnackbar
 import com.ichi2.anki.utils.ext.setCompoundDrawablesRelativeWithIntrinsicBoundsKt
 import com.ichi2.anki.withProgress
@@ -52,8 +38,6 @@ import timber.log.Timber
  * @see net.ankiweb.rsdroid.Backend.gradeNow
  */
 // TODO: handle rotation, via a DialogFragment with IdsFile handling or Fragment Result API
-@NeedsTest("UI test for this dialog")
-@NeedsTest("Menu only displayed if cards selected")
 @NeedsTest("Suspended card handling")
 object GradeNowDialog {
     fun showDialog(
@@ -70,15 +54,15 @@ object GradeNowDialog {
         val adapter = GradeNowListAdapter(context, Grade.entries)
 
         MaterialAlertDialogBuilder(context).show {
-            title(text = TR.actionsGradeNow().toSentenceCase(context, R.string.sentence_grade_now))
+            title(text = with(context) { TR.sentenceCase.gradeNow })
             negativeButton(R.string.dialog_cancel)
-            setAdapter(adapter, { dialog, which ->
+            setAdapter(adapter) { dialog, which ->
                 val selectedGrade = adapter.getItem(which)!!
                 Timber.i("selected '%s'", selectedGrade.name)
                 // dismiss the dialog before the operation completes to stop duplicate clicks
                 context.gradeNow(cardIds, selectedGrade)
                 dialog.dismiss()
-            })
+            }
         }
     }
 
@@ -98,22 +82,27 @@ object GradeNowDialog {
 
 private class GradeNowListAdapter(
     context: Context,
-    val grades: List<Grade>,
-) : ArrayAdapter<Grade>(context, R.layout.grade_now_list_item, grades) {
+    grades: List<Grade>,
+) : ArrayAdapter<Grade>(context, R.layout.item_grade_now, grades) {
     override fun getView(
         position: Int,
         convertView: View?,
         parent: ViewGroup,
-    ): View =
-        convertView ?: GradeNowListItemBinding
-            .inflate(LayoutInflater.from(context), parent, false)
-            .also { binding ->
-                val grade = getItem(position)!!
-                binding.gradeTextView.apply {
-                    text = grade.getLabel()
-                    setCompoundDrawablesRelativeWithIntrinsicBoundsKt(start = grade.iconRes)
-                }
-            }.root
+    ): View {
+        val binding =
+            if (convertView != null) {
+                ItemGradeNowBinding.bind(convertView)
+            } else {
+                ItemGradeNowBinding.inflate(LayoutInflater.from(context), parent, false)
+            }
+
+        val grade = getItem(position)!!
+        binding.gradeTextView.apply {
+            text = grade.getLabel()
+            setCompoundDrawablesRelativeWithIntrinsicBoundsKt(start = grade.iconRes)
+        }
+        return binding.root
+    }
 }
 
 private enum class Grade(

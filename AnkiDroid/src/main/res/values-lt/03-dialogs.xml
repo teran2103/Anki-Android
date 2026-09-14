@@ -6,47 +6,24 @@
  ~    Instructions for this are available here: https://github.com/ankidroid/Anki-Android/wiki/Translating-AnkiDroid. 
  ~    You may also find the documentation on contributing to Anki useful: https://github.com/ankidroid/Anki-Android/wiki/Contributing   
  ~ 
- ~ Copyright (c) 2009 Andrew <andrewdubya@gmail> 
- ~ Copyright (c) 2009 Edu Zamora <edu.zasu@gmail.com> 
- ~ Copyright (c) 2009 Daniel Svaerd <daniel.svard@gmail.com> 
- ~ Copyright (c) 2009 Nicolas Raoul <nicolas.raoul@gmail.com> 
- ~ Copyright (c) 2010 Norbert Nagold <norbert.nagold@gmail.com> 
- ~ This program is free software; you can redistribute it and/or modify it under 
- ~ the terms of the GNU General Public License as published by the Free Software 
- ~ Foundation; either version 3 of the License, or (at your option) any later 
- ~ version. 
- ~ 
- ~ This program is distributed in the hope that it will be useful, but WITHOUT ANY 
- ~ WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A 
- ~ PARTICULAR PURPOSE. See the GNU General Public License for more details. 
- ~ 
- ~ You should have received a copy of the GNU General Public License along with 
- ~ this program.  If not, see <http://www.gnu.org/licenses/>. 
+ ~ SPDX-License-Identifier: GPL-3.0-or-later
+ ~ SPDX-FileCopyrightText: Copyright (c) 2009 Andrew <andrewdubya@gmail>
+ ~ SPDX-FileCopyrightText: Copyright (c) 2009 Edu Zamora <edu.zasu@gmail.com>
+ ~ SPDX-FileCopyrightText: Copyright (c) 2009 Daniel Svaerd <daniel.svard@gmail.com>
+ ~ SPDX-FileCopyrightText: Copyright (c) 2009 Nicolas Raoul <nicolas.raoul@gmail.com>
+ ~ SPDX-FileCopyrightText: Copyright (c) 2010 Norbert Nagold <norbert.nagold@gmail.com>
  -->
  
 <!--
-~ Copyright (c) 2009 Andrew <andrewdubya@gmail>
-~ Copyright (c) 2009 Edu Zamora <edu.zasu@gmail.com>
-~ Copyright (c) 2009 Daniel Svärd <daniel.svard@gmail.com>
-~ Copyright (c) 2009 Nicolas Raoul <nicolas.raoul@gmail.com>
-~ Copyright (c) 2010 Norbert Nagold <norbert.nagold@gmail.com>
-~
-~ This program is free software; you can redistribute it and/or modify it under
-~ the terms of the GNU General Public License as published by the Free Software
-~ Foundation; either version 3 of the License, or (at your option) any later
-~ version.
-~
-~ This program is distributed in the hope that it will be useful, but WITHOUT ANY
-~ WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
-~ PARTICULAR PURPOSE. See the GNU General Public License for more details.
-~
-~ You should have received a copy of the GNU General Public License along with
-~ this program.  If not, see <http://www.gnu.org/licenses/>.
--->
+  ~ SPDX-License-Identifier: GPL-3.0-or-later
+  ~ SPDX-FileCopyrightText: Copyright (c) 2009 Andrew <andrewdubya@gmail>
+  ~ SPDX-FileCopyrightText: Copyright (c) 2009 Edu Zamora <edu.zasu@gmail.com>
+  ~ SPDX-FileCopyrightText: Copyright (c) 2009 Daniel Svärd <daniel.svard@gmail.com>
+  ~ SPDX-FileCopyrightText: Copyright (c) 2009 Nicolas Raoul <nicolas.raoul@gmail.com>
+  ~ SPDX-FileCopyrightText: Copyright (c) 2010 Norbert Nagold <norbert.nagold@gmail.com>
+  -->
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <string name="check_db_title">Patikrinti duomenų bazę?</string>
-    <string name="check_db_warning">Tai gali ilgai užtrukti</string>
-    <string name="contextmenu_deckpicker_delete_deck" maxLength="28">Trinti rinkinį</string>
+    <string name="check_db_warning">This may take a long time. Proceed?</string>
     <string name="delete_deck_title">Ištrinti rinkinį?</string>
     <plurals name="delete_deck_message">
         <item quantity="one">Delete all cards in %1$s? It contains %2$d card</item>
@@ -75,7 +52,7 @@
     <string name="custom_study_new_extend">Padidinti/sumažinti (\"-3\") šiandienos naują kortelės limitą</string>
     <string name="custom_study_rev_extend">Padidinti / sumažinti (\"-3\") šiandienos peržiūros ribą</string>
     <string name="custom_study_forgotten">Peržiūrėti korteles, kurios buvo pamirštos per paskutines x dienų:</string>
-    <string name="custom_study_ahead">Kartoti į priekį x dienų:</string>
+    <string name="custom_study_ahead_description">Review cards due in the next:</string>
     <string name="custom_study_preview">Peržiūrėti naujas korteles, pridėtas per paskutines x dienų:</string>
     <string name="custom_study_tags">Iš kortelių rinkinio pasirinkite x kortų:</string>
     <string name="storage_full_title">Saugykla pilna</string>
@@ -87,13 +64,17 @@
     <string name="restore_backup_choose_another">Pasirinkite kitą</string>
     <string name="dialog_cancel">Atšaukti</string>
     <string name="dialog_ok">Gerai</string>
+    <string name="dialog_add" comment="Positive dialog action button label to add \'something\'">Add</string>
+    <string name="restore">Restore</string>
     <string name="dialog_confirm" tools:ignore="UnusedResources">Patvirtinkite</string>
     <string name="dialog_no">Ne</string>
     <string name="dialog_yes">Taip</string>
     <string name="dialog_keep">Išlaikyti</string>
     <string name="dialog_remove">Pašalinti</string>
+    <string name="dialog_exit" comment="Label for a button which will exit/finish the current screen">Exit</string>
     <string name="dialog_continue">Tęsti</string>
     <string name="dialog_processing">Apdorojimas&#8230;</string>
+    <string name="dialog_allow">Allow</string>
     <string name="dialog_positive_create" comment="Create a new collection, probably erasing the previous one, may be necessary in case of error.">Kurti</string>
     <string name="dialog_positive_delete" maxLength="28">Ištrinti</string>
     <!-- Currently unsued, should be useful in the future -->
@@ -106,11 +87,10 @@
     <string name="dialog_invalid_custom_certificate_title">Klaida analizuojant sertifikatą</string>
     <string name="dialog_updated_custom_certificate">Sertifikatas atnaujintas</string>
     <!-- Media checking -->
-    <string name="check_media_title">Tikrinti laikmenas?</string>
-    <string name="check_media_warning">Esant dideliems laikmenų rinkiniams tai gali ilgai užtrukti</string>
+    <string name="check_media_warning">This may take a long time with large media collections. Proceed?</string>
     <string name="check_media_message">Tikrinamos laikmenos&#8230;</string>
     <string name="check_media_adding_missing_tag">Žymių pridėjimas&#8230;</string>
-    <string name="check_media_tags_added">Žymos pridėtos</string>
+    <string name="check_media_tags_added">Tagging results</string>
     <string name="delete_media_message">Medijos pašalinimas&#8230;</string>
     <string name="delete_media_result_title">Ištrynimo rezultatas</string>
     <plurals name="delete_media_result_message">
@@ -131,10 +111,8 @@
     <!-- Multimedia - Audio View -->
     <string name="multimedia_editor_audio_permission_denied">Atsisakyta išduoti leidimą įrašyti garsą</string>
     <string name="permission_denied">Permission denied</string>
-    <string name="recording_permission_denied_message">Microphone permission is necessary for the “Record voice” feature. Please grant it in the app settings.</string>
+    <string name="microphone_permission_denied_message">Microphone permission denied. Please grant it in the app settings.</string>
     <!-- Database Integrity Check -->
-    <string name="integrity_check_startup_title">AnkiDroid atnaujintas</string>
-    <string name="integrity_check_startup_content">\"AnkiDroid\" buvo atnaujintas. Šiame atnaujinime ištaisytos galimos duomenų bazės problemos, todėl patariame dabar atlikti duomenų bazės patikrą.</string>
     <string name="integrity_check_continue_anyway">Vis tiek tęsti</string>
     <string name="integrity_check_insufficient_space">\"Check Database\" naudoja daug laikinosios atminties.\n\nVisiškai rekomenduojama, kad prieš tęsdami darbą savo įrenginyje turėtumėte bent %s laisvos vietos.</string>
     <string name="integrity_check_insufficient_space_extra_content">\n\nŠiuo metu turite %s laisvų vietų.</string>
@@ -221,8 +199,6 @@
     <string name="dismiss_backup_warning_title">Įspėjimas apie duomenų praradimą</string>
     <string name="dismiss_backup_warning_new_user">Dėl \"Android\" privatumo pakeitimų jūsų duomenys ir automatinės atsarginės kopijos bus ištrinti iš telefono, jei programa bus pašalinta.</string>
     <string name="dismiss_backup_warning_upgrade">Dėl \"Android\" privatumo pakeitimų jūsų duomenys ir automatinės atsarginės kopijos bus neprieinamos, jei programa bus pašalinta.</string>
-    <string name="deck_already_exists">Toks rinkinys jau yra</string>
-    <string name="empty_deck_name">Rinkinio pavadinimas negali būti tuščias</string>
     <string name="create_deck_numeric_hint">Jei kyla problemų dėl denio eiliškumo (pvz., \"10\" atsiranda prieš \"2\"), pakeiskite \"2\" į \"02\".</string>
     <!-- Set Due Date -->
     <string name="set_due_date_match_interval" comment="when setting a card\'s due date, this checkbox also changes the interval of the card">Nustatykite tą pačią intervalo vertę</string>
@@ -276,4 +252,33 @@
     <string name="import_error_resolution_check_internet">Ensure you are connected to the internet</string>
     <string name="import_error_resolution_copy_to_device">Copy the file to your device and try again with the local file</string>
     <string name="import_error_resolution_select_file">Open the file using your device’s file browser app</string>
+    <!-- Post-login dialog -->
+    <string name="login_successful">Login successful</string>
+    <string name="sync_now">Sync now?</string>
+    <!--Change Note Type Dialog Fragment-->
+    <string name="card_numbers_unchanged">Card numbers will remain unchanged</string>
+    <!-- Subset of TR.changeNotetypeToFromCloze -->
+    <string name="extra_cloze_deletions_removed">If changing to a regular note type, and there are more cloze deletions than available card templates, any extra cards will be removed.</string>
+    <string name="different_note_types_selected">Please select notes from only one notetype.</string>
+    <string name="error_no_changes_to_save">No changes to save</string>
+    <string name="choose_color">Choose color</string>
+    <!-- Special Fields -->
+    <string name="standard_fields_tab_header" comment="Tab header for inserting non-special fields: {{Front}}">Fields</string>
+    <string name="special_fields_tab_header" comment="Tab header for inserting special fields: {{Deck}}">Special</string>
+    <string name="special_field_example_suffix"><![CDATA[: ‘<b>%1$s</b>’]]></string>
+    <string name="special_field_front_side_help">The front template content. Audio is not automatically played</string>
+    <string name="special_field_deck_help" comment="%s: either blank or \' %s\'">The full deck of the card, including parent decks%s</string>
+    <string name="special_field_subdeck_help" comment="%s: either blank or \' %s\'">The current deck of the card, excluding parent decks%s</string>
+    <string name="special_field_flag_help">Outputs ‘%1$s’, where %2$s is the flag code (%3$s\–%4$s\)</string>
+    <string name="special_field_tags_help" comment="%s: either blank or \' %s\'">The tags of the note%s</string>
+    <string name="special_field_card_id_help" comment="%s: either blank or \' %s\'">The ID of the card%s</string>
+    <string name="special_field_card_help" comment="%s: either blank or \' %s\'">The name of the card template%s</string>
+    <string name="special_field_type_help" comment="%s: either blank or \' %s\'">The name of the note type%s</string>
+    <!-- Change Note Type Dialog -->
+    <string name="change_note_type_from" comment="Label indicating the original note type before changing it">From</string>
+    <string name="change_note_type_to" comment="Label indicating the new note type to change to">To</string>
+    <!-- Add profile dialog -->
+    <string name="profile_name" comment="Label of the text field where the user types the name of a new profile">Profile name</string>
+    <string name="profile_name_empty_error" comment="Error shown when the user leaves the profile name empty">Profile name can’t be empty</string>
+    <string name="profile_name_too_long_error" comment="Error shown when a profile name exceeds the maximum length. %1$d is the maximum number of characters">Profile name must be %1$d characters or fewer</string>
 </resources>

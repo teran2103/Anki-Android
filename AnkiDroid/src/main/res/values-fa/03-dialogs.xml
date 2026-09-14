@@ -6,47 +6,24 @@
  ~    Instructions for this are available here: https://github.com/ankidroid/Anki-Android/wiki/Translating-AnkiDroid. 
  ~    You may also find the documentation on contributing to Anki useful: https://github.com/ankidroid/Anki-Android/wiki/Contributing   
  ~ 
- ~ Copyright (c) 2009 Andrew <andrewdubya@gmail> 
- ~ Copyright (c) 2009 Edu Zamora <edu.zasu@gmail.com> 
- ~ Copyright (c) 2009 Daniel Svaerd <daniel.svard@gmail.com> 
- ~ Copyright (c) 2009 Nicolas Raoul <nicolas.raoul@gmail.com> 
- ~ Copyright (c) 2010 Norbert Nagold <norbert.nagold@gmail.com> 
- ~ This program is free software; you can redistribute it and/or modify it under 
- ~ the terms of the GNU General Public License as published by the Free Software 
- ~ Foundation; either version 3 of the License, or (at your option) any later 
- ~ version. 
- ~ 
- ~ This program is distributed in the hope that it will be useful, but WITHOUT ANY 
- ~ WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A 
- ~ PARTICULAR PURPOSE. See the GNU General Public License for more details. 
- ~ 
- ~ You should have received a copy of the GNU General Public License along with 
- ~ this program.  If not, see <http://www.gnu.org/licenses/>. 
+ ~ SPDX-License-Identifier: GPL-3.0-or-later
+ ~ SPDX-FileCopyrightText: Copyright (c) 2009 Andrew <andrewdubya@gmail>
+ ~ SPDX-FileCopyrightText: Copyright (c) 2009 Edu Zamora <edu.zasu@gmail.com>
+ ~ SPDX-FileCopyrightText: Copyright (c) 2009 Daniel Svaerd <daniel.svard@gmail.com>
+ ~ SPDX-FileCopyrightText: Copyright (c) 2009 Nicolas Raoul <nicolas.raoul@gmail.com>
+ ~ SPDX-FileCopyrightText: Copyright (c) 2010 Norbert Nagold <norbert.nagold@gmail.com>
  -->
  
 <!--
-~ Copyright (c) 2009 Andrew <andrewdubya@gmail>
-~ Copyright (c) 2009 Edu Zamora <edu.zasu@gmail.com>
-~ Copyright (c) 2009 Daniel Svärd <daniel.svard@gmail.com>
-~ Copyright (c) 2009 Nicolas Raoul <nicolas.raoul@gmail.com>
-~ Copyright (c) 2010 Norbert Nagold <norbert.nagold@gmail.com>
-~
-~ This program is free software; you can redistribute it and/or modify it under
-~ the terms of the GNU General Public License as published by the Free Software
-~ Foundation; either version 3 of the License, or (at your option) any later
-~ version.
-~
-~ This program is distributed in the hope that it will be useful, but WITHOUT ANY
-~ WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
-~ PARTICULAR PURPOSE. See the GNU General Public License for more details.
-~
-~ You should have received a copy of the GNU General Public License along with
-~ this program.  If not, see <http://www.gnu.org/licenses/>.
--->
+  ~ SPDX-License-Identifier: GPL-3.0-or-later
+  ~ SPDX-FileCopyrightText: Copyright (c) 2009 Andrew <andrewdubya@gmail>
+  ~ SPDX-FileCopyrightText: Copyright (c) 2009 Edu Zamora <edu.zasu@gmail.com>
+  ~ SPDX-FileCopyrightText: Copyright (c) 2009 Daniel Svärd <daniel.svard@gmail.com>
+  ~ SPDX-FileCopyrightText: Copyright (c) 2009 Nicolas Raoul <nicolas.raoul@gmail.com>
+  ~ SPDX-FileCopyrightText: Copyright (c) 2010 Norbert Nagold <norbert.nagold@gmail.com>
+  -->
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <string name="check_db_title">بررسی پایگاه داده</string>
-    <string name="check_db_warning">این عملیات ممکن است مدت زیادی طول بکشد</string>
-    <string name="contextmenu_deckpicker_delete_deck" maxLength="28">حذف دسته</string>
+    <string name="check_db_warning">این فرایند ممکن است زمان زیادی طول بکشد. آیا ادامه می‌دهید؟</string>
     <string name="delete_deck_title">حذف دسته؟</string>
     <plurals name="delete_deck_message">
         <item quantity="one">حذف همه کارت ها در دسته ی %1$s؟ این دسته شامل %2$d کارت است</item>
@@ -71,7 +48,7 @@
     <string name="custom_study_new_extend">محدودیت تعداد کارت های امروز را کم/زیاد (\"-۳\") کن به این اندازه</string>
     <string name="custom_study_rev_extend">محدودیت تعداد مرور های امروز را کم/زیاد (\"-۳\") کن به این اندازه</string>
     <string name="custom_study_forgotten">مرور کارت های فراموش شده در x روز گذشته:</string>
-    <string name="custom_study_ahead">مرور پیش از موعد تا x روز:</string>
+    <string name="custom_study_ahead_description">Review cards due in the next:</string>
     <string name="custom_study_preview">پیش نمایش کارت های جدید اضافه شده در  x روز گذشته:</string>
     <string name="custom_study_tags">انتخاب x کارت از دسته کارت ها:</string>
     <string name="storage_full_title">حافظه</string>
@@ -83,13 +60,17 @@
     <string name="restore_backup_choose_another">انتخاب دیگری</string>
     <string name="dialog_cancel">لغو</string>
     <string name="dialog_ok">تایید</string>
+    <string name="dialog_add" comment="Positive dialog action button label to add \'something\'">افزودن</string>
+    <string name="restore">بازنشانی</string>
     <string name="dialog_confirm" tools:ignore="UnusedResources">تایید</string>
     <string name="dialog_no">خیر</string>
     <string name="dialog_yes">بله</string>
     <string name="dialog_keep">نگه داشتن</string>
     <string name="dialog_remove">حذف کردن</string>
+    <string name="dialog_exit" comment="Label for a button which will exit/finish the current screen">خروج</string>
     <string name="dialog_continue">ادامه</string>
     <string name="dialog_processing">در حال پردازش&#8230;</string>
+    <string name="dialog_allow">Allow</string>
     <string name="dialog_positive_create" comment="Create a new collection, probably erasing the previous one, may be necessary in case of error.">ایجاد</string>
     <string name="dialog_positive_delete" maxLength="28">حذف</string>
     <!-- Currently unsued, should be useful in the future -->
@@ -102,11 +83,10 @@
     <string name="dialog_invalid_custom_certificate_title">خطا در تجزیه گواهی</string>
     <string name="dialog_updated_custom_certificate">گواهی به‌روزرسانی شد</string>
     <!-- Media checking -->
-    <string name="check_media_title">رسانه بررسی شود؟</string>
-    <string name="check_media_warning">در صورت حجیم بودن رسانه مجموعه،این ممکن است طول بکشد</string>
+    <string name="check_media_warning">با مجموعه‌های رسانه‌ای حجیم، این کار ممکن است بسیار زمان‌بر باشد. آیا ادامه می‌دهید؟</string>
     <string name="check_media_message">در حال بررسی رسانه&#8230;</string>
     <string name="check_media_adding_missing_tag">در حال اضافه کردن تگ ها&#8230;</string>
-    <string name="check_media_tags_added">تگ ها اضافه شدند</string>
+    <string name="check_media_tags_added">Tagging results</string>
     <string name="delete_media_message">حذف رسانه&#8230;</string>
     <string name="delete_media_result_title">نتیجه حذف</string>
     <plurals name="delete_media_result_message">
@@ -124,11 +104,9 @@
     <string name="multimedia_editor_failed">باز کردن ویرایشگر رسانه انجام نشد</string>
     <!-- Multimedia - Audio View -->
     <string name="multimedia_editor_audio_permission_denied">دسترسی به ضبط صدا به آنکی‌دروید داده نشد</string>
-    <string name="permission_denied">Permission denied</string>
-    <string name="recording_permission_denied_message">Microphone permission is necessary for the “Record voice” feature. Please grant it in the app settings.</string>
+    <string name="permission_denied">مجوز رد شد.</string>
+    <string name="microphone_permission_denied_message">Microphone permission denied. Please grant it in the app settings.</string>
     <!-- Database Integrity Check -->
-    <string name="integrity_check_startup_title">آنکی‌دروید به روز‌رسانی شد</string>
-    <string name="integrity_check_startup_content">آنکی دروید به‌روزرسانی شده است. این نسخۀ شامل تعمیراتی برای مشکلات محتمل دیتابیس است، بنابراین ما به شما پیشنهاد می‌کنیم که اکنون از گزینۀ بررسی دیتابیس استفاده کنید.</string>
     <string name="integrity_check_continue_anyway">ادامه بده</string>
     <string name="integrity_check_insufficient_space">بررسی دیتابیس حجم زیادی از حافظۀ موقت را اشغال خواهد کرد.\n\nبه شدت پیشنهاد می‌کنیم قبل از اجرای بررسی دیتابیس از خالی بودن حداقل %s از حافظۀ موقت دستگاهتان اطمینان حاصل کنید.</string>
     <string name="integrity_check_insufficient_space_extra_content">\n\n%sاز حافظۀ موقت شما خالی است.</string>
@@ -213,8 +191,6 @@
     <string name="dismiss_backup_warning_title">خطر از دست رفتن داده‌ها</string>
     <string name="dismiss_backup_warning_new_user">بنا بر تغییرات حریم خصوصی اندروید، در صورت پاک کردن اپلیکیشن از روی موبایل، داده‌ها و پشتیبان‌های اتوماتیک نیز حذف خواهند شد.</string>
     <string name="dismiss_backup_warning_upgrade">بنا بر تغییرات حریم خصوصی اندروید، در صورت پاک کردن اپلیکیشن از روی موبایل، داده‌ها و پشتیبان‌های اتوماتیک غیرقابل دسترسی خواهند شد.</string>
-    <string name="deck_already_exists">دسته کارت از قبل وجود دارد</string>
-    <string name="empty_deck_name">نام دسته نمیتواند خالی باشد</string>
     <string name="create_deck_numeric_hint">اگر مشکل ترتیب دسته کارت‌ها دارید (مثلاً ‘10’ قبل از ‘2’ ظاهر می‌شود)، ‘2’ را با ‘02’ جایگزین کنید</string>
     <!-- Set Due Date -->
     <string name="set_due_date_match_interval" comment="when setting a card\'s due date, this checkbox also changes the interval of the card">تنظیم فاصله زمانی به همان مقدار</string>
@@ -255,9 +231,38 @@
     <string name="tts_error_dialog_change_button_text">موتور را تغییر بده</string>
     <string name="tts_error_dialog_supported_voices_button_text">گزینه های صدا</string>
     <!-- import_cache_error_resolutions -->
-    <string name="import_error_resolution_try_again">Re-import the file</string>
-    <string name="import_error_resolution_free_up_space">Ensure there is sufficient free space on your device</string>
-    <string name="import_error_resolution_check_internet">Ensure you are connected to the internet</string>
-    <string name="import_error_resolution_copy_to_device">Copy the file to your device and try again with the local file</string>
-    <string name="import_error_resolution_select_file">Open the file using your device’s file browser app</string>
+    <string name="import_error_resolution_try_again">فایل را دوباره وارد کنید.</string>
+    <string name="import_error_resolution_free_up_space">مطمئن شوید فضای خالی کافی در دستگاه شما وجود دارد.</string>
+    <string name="import_error_resolution_check_internet">مطمئن شوید که به اینترنت متصل هستید.</string>
+    <string name="import_error_resolution_copy_to_device">فایل را در دستگاه خود کپی کنید و دوباره با فایل محلی امتحان کنید.</string>
+    <string name="import_error_resolution_select_file">فایل را با استفاده از برنامه مرورگر فایل دستگاه خود باز کنید.</string>
+    <!-- Post-login dialog -->
+    <string name="login_successful">ورود موفقیت‌آمیز</string>
+    <string name="sync_now">همگام‌سازی الان انجام شود؟</string>
+    <!--Change Note Type Dialog Fragment-->
+    <string name="card_numbers_unchanged">شمارهٔ کارت‌ها بدون تغییر باقی خواهد ماند</string>
+    <!-- Subset of TR.changeNotetypeToFromCloze -->
+    <string name="extra_cloze_deletions_removed">در صورت تغییر به یک نوع یادداشت معمولی، اگر تعداد حذف‌های کلوزها (cloze) بیش از قالب‌های کارت موجود باشد، کارت‌های اضافی حذف خواهند شد.</string>
+    <string name="different_note_types_selected">لطفاً یادداشت‌های انتخابی را فقط از یک نوع باشند.</string>
+    <string name="error_no_changes_to_save">تغییرای برای ذخیره‌سازی نیست</string>
+    <string name="choose_color">انتخاب رنگ</string>
+    <!-- Special Fields -->
+    <string name="standard_fields_tab_header" comment="Tab header for inserting non-special fields: {{Front}}">فیلدها</string>
+    <string name="special_fields_tab_header" comment="Tab header for inserting special fields: {{Deck}}">ویژه</string>
+    <string name="special_field_example_suffix"><![CDATA[: ‘<b>%1$s</b>’]]></string>
+    <string name="special_field_front_side_help">محتویات نمای جلوی کارت. صدا به صورت خودکار پخش نمی‌شود</string>
+    <string name="special_field_deck_help" comment="%s: either blank or \' %s\'">مجموعهٔ کامل کارت،با احتساب دسته‌های اصلی %s</string>
+    <string name="special_field_subdeck_help" comment="%s: either blank or \' %s\'">دستهٔ فعلی کارت، بدون در نظر گرفتن دسته‌های اصلی %s</string>
+    <string name="special_field_flag_help">خروجی «%1$s» را می‌دهد. به‌طوری‌که %2$s کد پرچم است (محدودهٔ %3$s تا %4$s).</string>
+    <string name="special_field_tags_help" comment="%s: either blank or \' %s\'">برچسب‌ها در این یادداشت %s</string>
+    <string name="special_field_card_id_help" comment="%s: either blank or \' %s\'">شمارهٔ شناسایی کارت %s</string>
+    <string name="special_field_card_help" comment="%s: either blank or \' %s\'">نام قالب‌بندی کارت %s</string>
+    <string name="special_field_type_help" comment="%s: either blank or \' %s\'">اسم نوع یادداشت%s</string>
+    <!-- Change Note Type Dialog -->
+    <string name="change_note_type_from" comment="Label indicating the original note type before changing it">From</string>
+    <string name="change_note_type_to" comment="Label indicating the new note type to change to">To</string>
+    <!-- Add profile dialog -->
+    <string name="profile_name" comment="Label of the text field where the user types the name of a new profile">Profile name</string>
+    <string name="profile_name_empty_error" comment="Error shown when the user leaves the profile name empty">Profile name can’t be empty</string>
+    <string name="profile_name_too_long_error" comment="Error shown when a profile name exceeds the maximum length. %1$d is the maximum number of characters">Profile name must be %1$d characters or fewer</string>
 </resources>

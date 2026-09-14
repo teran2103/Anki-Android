@@ -1,18 +1,4 @@
-/*
- *  Copyright (c) 2020 David Allison <davidallisongithub@gmail.com>
- *
- *  This program is free software; you can redistribute it and/or modify it under
- *  the terms of the GNU General Public License as published by the Free Software
- *  Foundation; either version 3 of the License, or (at your option) any later
- *  version.
- *
- *  This program is distributed in the hope that it will be useful, but WITHOUT ANY
- *  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
- *  PARTICULAR PURPOSE. See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with
- *  this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 package com.ichi2.utils
 
@@ -21,7 +7,7 @@ import android.content.Context
 import android.net.Uri
 import android.os.Environment
 import android.os.StatFs
-import com.ichi2.compat.CompatHelper
+import com.ichi2.anki.compat.CompatHelper
 import timber.log.Timber
 import java.io.File
 import java.io.FileNotFoundException
@@ -98,7 +84,7 @@ object FileUtil {
         // If we got a real file name, do a copy from it
         val inputStream: InputStream =
             try {
-                contentResolver.openInputStream(uri)!!
+                contentResolver.openInputStreamSafe(uri)!!
             } catch (e: Exception) {
                 Timber.w(e, "internalizeUri() unable to open input stream from content resolver for Uri %s", uri)
                 throw e
@@ -125,21 +111,6 @@ object FileUtil {
     fun listFiles(dir: File): Array<File> =
         dir.listFiles()
             ?: throw IOException("Failed to list the contents of '$dir'")
-
-    /**
-     * Returns a sequence containing the provided file, and its parents
-     * up to the root of the filesystem.
-     */
-    fun File.getParentsAndSelfRecursive() =
-        sequence {
-            var currentPath: File? = this@getParentsAndSelfRecursive.canonicalFile
-            while (currentPath != null) {
-                yield(currentPath)
-                currentPath = currentPath.parentFile?.canonicalFile
-            }
-        }
-
-    fun File.isDescendantOf(ancestor: File) = this.getParentsAndSelfRecursive().drop(1).contains(ancestor)
 }
 
 /**
@@ -182,7 +153,7 @@ data class FileNameAndExtension private constructor(
                 null
             } else {
                 FileNameAndExtension(
-                    fileName = fileName.substring(0, index),
+                    fileName = fileName.take(index),
                     extensionWithDot = fileName.substring(index),
                 )
             }
@@ -220,4 +191,27 @@ fun ContentResolver.openInputStreamSafe(uri: Uri): InputStream? {
         throw SecurityException("java/android/unsafe-content-uri-resolution")
     }
     return openInputStream(uri)
+}
+
+/**
+ * Extension method to safely resolve a child file within this parent directory.
+ * Prevents directory traversal attacks (e.g. "../", symlinks) by verifying canonical paths.
+ *
+ * @throws SecurityException If the resolved path escapes the parent directory.
+ */
+fun File.withFileNameSafe(childName: String): File {
+    val child = File(this, childName)
+    try {
+        val canonicalParent = this.canonicalPath
+        val canonicalChild = child.canonicalPath
+
+        if (!canonicalChild.startsWith(canonicalParent + File.separator)) {
+            // Do not put attacker-controlled paths in exception messages (they are reported to ACRA).
+            throw SecurityException("Path traversal detected")
+        }
+    } catch (e: IOException) {
+        // Do not put attacker-controlled paths in exception messages (they are reported to ACRA).
+        throw IllegalArgumentException("Unable to resolve canonical path", e)
+    }
+    return child
 }

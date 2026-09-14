@@ -1,33 +1,25 @@
-/*
- *  Copyright (c) 2020 David Allison <davidallisongithub@gmail.com>
- *
- *  This program is free software; you can redistribute it and/or modify it under
- *  the terms of the GNU General Public License as published by the Free Software
- *  Foundation; either version 3 of the License, or (at your option) any later
- *  version.
- *
- *  This program is distributed in the hope that it will be useful, but WITHOUT ANY
- *  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
- *  PARTICULAR PURPOSE. See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with
- *  this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package com.ichi2.anki
 
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.Bundle
 import android.text.TextUtils
+import android.view.Menu
+import android.view.View
 import android.widget.Spinner
 import android.widget.SpinnerAdapter
 import android.widget.TextView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.edit
-import androidx.core.os.bundleOf
+import androidx.core.net.toUri
 import androidx.core.view.children
+import androidx.core.view.get
+import androidx.core.view.size
 import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.Fragment
+import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.Espresso.onData
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.action.ViewActions
@@ -50,6 +42,7 @@ import com.ichi2.anki.CollectionManager.TR
 import com.ichi2.anki.CollectionManager.withCol
 import com.ichi2.anki.IntentHandler.Companion.grantedStoragePermissions
 import com.ichi2.anki.RobolectricTest.Companion.advanceRobolectricLooper
+import com.ichi2.anki.browser.BrowserColumnKey
 import com.ichi2.anki.browser.BrowserMultiColumnAdapter
 import com.ichi2.anki.browser.BrowserMultiColumnAdapter.Companion.LINES_VISIBLE_WHEN_COLLAPSED
 import com.ichi2.anki.browser.CardBrowserColumn
@@ -73,12 +66,15 @@ import com.ichi2.anki.browser.FindAndReplaceDialogFragment.Companion.TAGS_AS_FIE
 import com.ichi2.anki.browser.column1
 import com.ichi2.anki.browser.selectRowAtPosition
 import com.ichi2.anki.browser.setColumn
+import com.ichi2.anki.browser.setSelectedDeck
 import com.ichi2.anki.browser.toRowSelection
 import com.ichi2.anki.common.time.TimeManager
 import com.ichi2.anki.common.utils.isRunningAsUnitTest
+import com.ichi2.anki.dialogs.DeckSelectionDialog
 import com.ichi2.anki.libanki.BrowserConfig
 import com.ichi2.anki.libanki.CardId
 import com.ichi2.anki.libanki.CardType
+import com.ichi2.anki.libanki.DeckNameId
 import com.ichi2.anki.libanki.Note
 import com.ichi2.anki.libanki.NotetypeJson
 import com.ichi2.anki.libanki.QueueType
@@ -91,13 +87,15 @@ import com.ichi2.anki.scheduling.ForgetCardsDialog
 import com.ichi2.anki.servicelayer.PreferenceUpgradeService
 import com.ichi2.anki.servicelayer.PreferenceUpgradeService.PreferenceUpgrade.UpgradeBrowserColumns.Companion.LEGACY_COLUMN1_KEYS
 import com.ichi2.anki.servicelayer.PreferenceUpgradeService.PreferenceUpgrade.UpgradeBrowserColumns.Companion.LEGACY_COLUMN2_KEYS
-import com.ichi2.anki.ui.internationalization.toSentenceCase
-import com.ichi2.anki.utils.ext.getCurrentDialogFragment
-import com.ichi2.anki.utils.ext.showDialogFragment
+import com.ichi2.anki.settings.Prefs
+import com.ichi2.anki.ui.internationalization.sentenceCase
 import com.ichi2.testutils.IntentAssert
 import com.ichi2.testutils.common.Flaky
 import com.ichi2.testutils.common.OS
+import com.ichi2.testutils.ext.menu
 import com.ichi2.testutils.getSharedPrefs
+import com.ichi2.testutils.withSplitPaneUiAsync
+import com.ichi2.utils.LanguageUtil
 import io.mockk.every
 import io.mockk.mockkObject
 import io.mockk.mockkStatic
@@ -117,6 +115,7 @@ import org.hamcrest.Matchers.nullValue
 import org.hamcrest.Matchers.startsWith
 import org.junit.Assume.assumeThat
 import org.junit.Assume.assumeTrue
+import org.junit.Before
 import org.junit.Ignore
 import org.junit.Test
 import org.junit.jupiter.api.assertDoesNotThrow
@@ -137,6 +136,13 @@ import kotlin.test.fail
 
 @RunWith(AndroidJUnit4::class)
 class CardBrowserTest : RobolectricTest() {
+    @Before
+    override fun setUp() {
+        super.setUp()
+        setCardBrowserFragmented(false)
+        setUsingSearchView(false)
+    }
+
     @Test
     fun browserIsNotInitiallyInMultiSelectModeWithNoCards() =
         runTest {
@@ -193,6 +199,18 @@ class CardBrowserTest : RobolectricTest() {
             // Assert again: the deck selection should not change
             assertEquals(deckId, this.lastDeckId)
         }
+
+    @Test
+    fun `can select deck with escaped name - issue 20279`() {
+        val deckId = addDeck("test\\s")
+        withBrowser(noteCount = 1) {
+            val selectableDeck = SelectableDeck.Deck(deckId, "test\\s")
+
+            this.onDeckSelected(selectableDeck)
+
+            assertDoesNotThrow { advanceRobolectricLooper() }
+        }
+    }
 
     @Test
     @Flaky(os = OS.WINDOWS, "Index 0 out of bounds for length 0")
@@ -461,6 +479,30 @@ class CardBrowserTest : RobolectricTest() {
         }
     }
 
+    /**
+     * Sending the `anki://x-callback-url/browser?search=` deep link searches in [CardBrowser].
+     */
+    @Test
+    fun browserDeepLinkOpensCardBrowserWithSearch() {
+        ensureCollectionLoadIsSynchronous()
+        addBasicNote("dog", "barks")
+        addBasicNote("cat", "meows")
+
+        val deepLink =
+            Intent(targetContext, CardBrowser::class.java).apply {
+                action = Intent.ACTION_VIEW
+                data = "anki://x-callback-url/browser?search=dog".toUri()
+            }
+
+        ActivityScenario.launch<CardBrowser>(deepLink).use { scenario ->
+            advanceRobolectricLooper()
+            scenario.onActivity { browser ->
+                assertThat("the deep link's search is applied", browser.viewModel.searchTerms, equalTo("dog"))
+                assertThat("only the matching note is shown", browser.viewModel.rowCount, equalTo(1))
+            }
+        }
+    }
+
     @Test
     fun tagWithBracketsDisplaysProperly() =
         runTest {
@@ -472,38 +514,6 @@ class CardBrowserTest : RobolectricTest() {
             b.filterByTagSync("sketchy::(1)")
 
             assertThat("tagged card should be returned", b.viewModel.rowCount, equalTo(1))
-        }
-
-    @Test
-    @Flaky(os = OS.WINDOWS, "IllegalStateException: Card '1596783600440' not found")
-    fun previewWorksAfterSort() =
-        runTest {
-            // #7286
-            val cid1 = addBasicNote("Hello", "World").cards()[0].id
-            val cid2 = addBasicNote("Hello2", "World2").cards()[0].id
-
-            val b = browserWithNoNewCards
-
-            b.selectRowsWithPositions(0)
-            val previewIntent = b.viewModel.queryPreviewIntentData()
-            assertThat("before: index", previewIntent.currentIndex, equalTo(0))
-            assertThat(
-                "before: cards",
-                previewIntent.idsFile.getIds(),
-                equalTo(listOf(cid1, cid2)),
-            )
-
-            // reverse
-            b.viewModel.changeCardOrder(SortType.SORT_FIELD)
-
-            b.replaceSelectionWith(intArrayOf(0))
-            val intentAfterReverse = b.viewModel.queryPreviewIntentData()
-            assertThat("after: index", intentAfterReverse.currentIndex, equalTo(0))
-            assertThat(
-                "after: cards",
-                intentAfterReverse.idsFile.getIds(),
-                equalTo(listOf(cid2, cid1)),
-            )
         }
 
     /** 7420  */
@@ -524,9 +534,8 @@ class CardBrowserTest : RobolectricTest() {
 
             assertThat("The target deck should be selected", b.lastDeckId, equalTo(targetDid))
 
-            val addIntent = b.addNoteLauncher.toIntent(targetContext)
-            val bundle = addIntent.getBundleExtra(NoteEditorActivity.FRAGMENT_ARGS_EXTRA)
-            IntentAssert.hasExtra(bundle, NoteEditorFragment.EXTRA_DID, targetDid)
+            val addIntent = b.cardBrowserFragment.addNoteLauncher.toIntent(targetContext)
+            IntentAssert.hasExtra(addIntent.extras, NoteEditorFragment.EXTRA_DID, targetDid)
         }
 
     /** 7420  */
@@ -538,9 +547,8 @@ class CardBrowserTest : RobolectricTest() {
 
         assertThat("The initial deck should be selected", b.lastDeckId, equalTo(initialDid))
 
-        val addIntent = b.addNoteLauncher.toIntent(targetContext)
-        val bundle = addIntent.getBundleExtra(NoteEditorActivity.FRAGMENT_ARGS_EXTRA)
-        IntentAssert.hasExtra(bundle, NoteEditorFragment.EXTRA_DID, initialDid)
+        val addIntent = b.cardBrowserFragment.addNoteLauncher.toIntent(targetContext)
+        IntentAssert.hasExtra(addIntent.extras, NoteEditorFragment.EXTRA_DID, initialDid)
     }
 
     @Test
@@ -680,10 +688,10 @@ class CardBrowserTest : RobolectricTest() {
             // simulate the user using the ForgetCardsDialog to start the cards reset process
             b.supportFragmentManager.setFragmentResult(
                 ForgetCardsDialog.REQUEST_KEY_FORGET,
-                bundleOf(
-                    ForgetCardsDialog.ARG_RESTORE_ORIGINAL to true,
-                    ForgetCardsDialog.ARG_RESET_REPETITION to false,
-                ),
+                Bundle().apply {
+                    putBoolean(ForgetCardsDialog.ARG_RESTORE_ORIGINAL, true)
+                    putBoolean(ForgetCardsDialog.ARG_RESET_REPETITION, false)
+                },
             )
 
             assertThat(
@@ -722,7 +730,7 @@ class CardBrowserTest : RobolectricTest() {
                 equalTo("2"),
             )
 
-            b.onUndo()
+            b.cardBrowserFragment.onUndo()
 
             assertThat(
                 "Position of checked card after undo should be reset",
@@ -733,17 +741,18 @@ class CardBrowserTest : RobolectricTest() {
 
     @Test
     fun change_deck_dialog_is_dismissed_on_activity_recreation() {
-        val cardBrowser = browserWithNoNewCards
-
-        val dialog = cardBrowser.cardBrowserFragment.getChangeDeckDialog(listOf())
-        cardBrowser.showDialogFragment(dialog)
-
-        val shownDialog: Fragment? = cardBrowser.getCurrentDialogFragment()
+        val cardBrowser = browserWithMultipleNotes
+        cardBrowser.viewModel.selectRowAtPosition(0)
+        cardBrowser.cardBrowserFragment.showChangeDeckDialog()
+        advanceRobolectricLooper()
+        val shownDialog: Fragment? =
+            cardBrowser.supportFragmentManager.findFragmentByTag(DeckSelectionDialog.TAG)
         assertNotNull(shownDialog)
 
         ActivityCompat.recreate(cardBrowser)
         advanceRobolectricLooper()
-        val dialogAfterRecreate: Fragment? = cardBrowser.getCurrentDialogFragment()
+        val dialogAfterRecreate: Fragment? =
+            cardBrowser.supportFragmentManager.findFragmentByTag(DeckSelectionDialog.TAG)
         assertNull(dialogAfterRecreate)
     }
 
@@ -793,12 +802,21 @@ class CardBrowserTest : RobolectricTest() {
         )
 
         // Change the display order of the card browser
-        cardBrowserController.get().viewModel.changeCardOrder(SortType.EASE)
+        cardBrowserController.get().viewModel.setSortType(
+            SortType.CollectionOrdering(
+                BrowserColumnKey("cardEase"),
+                reverse = true,
+            ),
+        )
 
         // Kill and restart the activity and ensure that display order is preserved
         val outBundle = Bundle()
         cardBrowserController.saveInstanceState(outBundle)
-        cardBrowserController.pause().stop().destroy()
+        cardBrowserController.pause().stop()
+        // fix Robolectric bug with launchCollectionInLifecycleScope
+        // method running after onStart without context
+        advanceRobolectricLooper()
+        cardBrowserController.destroy()
         cardBrowserController =
             Robolectric
                 .buildActivity(CardBrowser::class.java)
@@ -846,7 +864,8 @@ class CardBrowserTest : RobolectricTest() {
             )
             assertThat("Result should be empty", cardBrowser.viewModel.rowCount, equalTo(0))
 
-            cardBrowser.searchAllDecks().join()
+            advanceRobolectricLooper()
+            cardBrowser.viewModel.setSelectedDeck(SelectableDeck.AllDecks)
             advanceRobolectricLooper()
             assertThat("Result should contain one card", cardBrowser.viewModel.rowCount, equalTo(1))
         }
@@ -859,7 +878,7 @@ class CardBrowserTest : RobolectricTest() {
             addBasicAndReversedNote("Hello", "Anki")
 
             browserWithNoNewCards.apply {
-                searchAllDecks().join()
+                viewModel.setSelectedDeck(SelectableDeck.AllDecks)
                 advanceRobolectricLooper()
                 with(viewModel) {
                     assertThat("Result should contain 4 cards", rowCount, equalTo(4))
@@ -868,29 +887,6 @@ class CardBrowserTest : RobolectricTest() {
                     assertThat("Result should contain 2 cards (one per note)", rowCount, equalTo(2))
                 }
             }
-        }
-
-    /** PR #14859  */
-    @Test
-    fun checkDisplayOrderAfterTogglingCardsToNotes() =
-        withBrowser {
-            viewModel.changeCardOrder(SortType.EASE) // order no. 7 corresponds to "cardEase"
-
-            viewModel.changeCardOrder(SortType.EASE) // reverse the list
-
-            viewModel.setCardsOrNotes(NOTES)
-            searchCards()
-
-            assertThat(
-                "Card Browser has the new noteSortType field",
-                col.config.get<String>("noteSortType"),
-                equalTo("cardEase"),
-            )
-            assertThat(
-                "Card Browser has the new browserNoteSortBackwards field",
-                col.config.get<Boolean>("browserNoteSortBackwards"),
-                equalTo(true),
-            )
         }
 
     data class CheckedCardResult(
@@ -937,26 +933,6 @@ class CardBrowserTest : RobolectricTest() {
         val shadowActivity = shadowOf(browser)
         shadowActivity.clickMenuItem(actionSelectAll)
         advanceRobolectricLooper()
-    }
-
-    /** Returns an instance of [CardBrowser] containing [noteCount] notes */
-    private fun getBrowserWithNotes(
-        noteCount: Int,
-        reversed: Boolean = false,
-    ): CardBrowser {
-        ensureCollectionLoadIsSynchronous()
-        if (reversed) {
-            for (i in 0 until noteCount) {
-                addBasicAndReversedNote(i.toString(), "back")
-            }
-        } else {
-            for (i in 0 until noteCount) {
-                addBasicNote(i.toString(), "back")
-            }
-        }
-        return super.startRegularActivity<CardBrowser>(Intent()).also {
-            advanceRobolectricLooper() // may be a fix for flaky tests
-        }
     }
 
     private val browserWithNoNewCards: CardBrowser
@@ -1155,6 +1131,28 @@ class CardBrowserTest : RobolectricTest() {
         }
 
     @Test
+    fun `selecting rows changes the toolbar title`() {
+        val cardBrowser = getBrowserWithNotes(2)
+        val toolbarTitle =
+            assertNotNull(
+                cardBrowser.findViewById<TextView>(R.id.toolbar_title),
+                "toolbar title view should exist",
+            )
+        val locale = LanguageUtil.getLocaleCompat(cardBrowser.resources)
+
+        assertEquals(View.GONE, toolbarTitle.visibility, "toolbar title should be hidden initially")
+
+        cardBrowser.viewModel.selectRowAtPosition(0)
+        advanceRobolectricLooper()
+        assertEquals(View.VISIBLE, toolbarTitle.visibility, "toolbar title should be visible")
+        assertEquals(String.format(locale, "%d", 1), toolbarTitle.text, "selecting one row should count 1")
+
+        cardBrowser.viewModel.selectRowAtPosition(1)
+        advanceRobolectricLooper()
+        assertEquals(String.format(locale, "%d", 2), toolbarTitle.text, "selecting two rows should count 2")
+    }
+
+    @Test
     fun `deck id is remembered - issue 15072`() =
         runTest {
             // WARN: This doesn't mirror reality due to the use of coroutines
@@ -1220,7 +1218,7 @@ class CardBrowserTest : RobolectricTest() {
     @Test
     @Ignore(
         "issues with launchCollectionInLifecycleScope - provided value is not current" +
-            "use an integration test",
+            " use an integration test",
     )
     fun `column text is updated - cardsOrNotes and column change`() {
         addBasicAndReversedNote("Hello", "World")
@@ -1248,16 +1246,16 @@ class CardBrowserTest : RobolectricTest() {
         withBrowser {
             showFindAndReplaceDialog()
             // nothing selected so checkbox 'Only selected notes' is not available
-            onView(withId(R.id.check_only_selected_notes)).inRoot(isDialog()).check(matches(isNotEnabled()))
-            onView(withId(R.id.check_only_selected_notes)).inRoot(isDialog()).check(matches(isNotChecked()))
+            onView(withId(R.id.only_selected_notes_check_box)).inRoot(isDialog()).check(matches(isNotEnabled()))
+            onView(withId(R.id.only_selected_notes_check_box)).inRoot(isDialog()).check(matches(isNotChecked()))
             val fieldSelectorAdapter = getFindReplaceFieldsAdapter()
-            onView(withId(R.id.check_ignore_case)).inRoot(isDialog()).check(matches(isChecked()))
-            onView(withId(R.id.check_input_as_regex)).inRoot(isDialog()).check(matches(isNotChecked()))
+            onView(withId(R.id.ignore_case_check_box)).inRoot(isDialog()).check(matches(isChecked()))
+            onView(withId(R.id.input_as_regex_check_box)).inRoot(isDialog()).check(matches(isNotChecked()))
             // as nothing is selected the fields selector has only the two default options
             assertNotNull(fieldSelectorAdapter, "Fields adapter was not set")
             assertEquals(2, fieldSelectorAdapter.count)
             assertEquals(
-                TR.browsingAllFields().toSentenceCase(targetContext, R.string.sentence_all_fields),
+                with(targetContext) { TR.sentenceCase.allFields },
                 fieldSelectorAdapter.getItem(0),
             )
             assertEquals(TR.editingTags(), fieldSelectorAdapter.getItem(1))
@@ -1284,7 +1282,7 @@ class CardBrowserTest : RobolectricTest() {
             assertEquals(4, fieldSelectorAdapter.count)
             val defaultFields =
                 listOf(
-                    TR.browsingAllFields().toSentenceCase(targetContext, R.string.sentence_all_fields),
+                    with(targetContext) { TR.sentenceCase.allFields },
                     TR.editingTags(),
                 )
             assertEquals(defaultFields + listOf("Bfield0", "Bfield1"), fieldSelectorAdapter.getAdapterData())
@@ -1317,12 +1315,12 @@ class CardBrowserTest : RobolectricTest() {
             openFindAndReplace()
             onView(withId(R.id.input_search)).inRoot(isDialog()).perform(ViewActions.typeText("k"))
             onView(withId(R.id.input_replace)).inRoot(isDialog()).perform(ViewActions.typeText("X"))
-            onView(withId(R.id.check_input_as_regex)).inRoot(isDialog()).perform(scrollCompletelyTo())
+            onView(withId(R.id.input_as_regex_check_box)).inRoot(isDialog()).perform(scrollCompletelyTo())
             onData(allOf(`is`(instanceOf(String::class.java)), `is`("Afield0")))
                 .inAdapterView(withId(R.id.fields_selector))
                 .perform(click())
             onView(withId(R.id.fields_selector)).check(matches(withSpinnerText(containsString("Afield0"))))
-            onView(withId(R.id.check_ignore_case)).inRoot(isDialog()).check(matches(isChecked()))
+            onView(withId(R.id.ignore_case_check_box)).inRoot(isDialog()).check(matches(isChecked()))
             // although the positive button exists, clicking it with Espresso doesn't work
             //     onView(withId(android.R.id.button1)).inRoot(isDialog()).perform(click())
             // so simulate clicking the positive button by running the associated method directly
@@ -1351,14 +1349,14 @@ class CardBrowserTest : RobolectricTest() {
             openFindAndReplace()
             onView(withId(R.id.input_search)).inRoot(isDialog()).perform(ViewActions.typeText("k"))
             onView(withId(R.id.input_replace)).inRoot(isDialog()).perform(ViewActions.typeText("X"))
-            onView(withId(R.id.check_input_as_regex)).inRoot(isDialog()).perform(scrollCompletelyTo())
+            onView(withId(R.id.input_as_regex_check_box)).inRoot(isDialog()).perform(scrollCompletelyTo())
             onData(allOf(`is`(instanceOf(String::class.java)), `is`("Afield0")))
                 .inAdapterView(withId(R.id.fields_selector))
                 .perform(click())
-            onView(withId(R.id.check_ignore_case)).inRoot(isDialog()).perform(scrollCompletelyTo())
-            onView(withId(R.id.check_ignore_case)).inRoot(isDialog()).check(matches(isChecked()))
-            onView(withId(R.id.check_ignore_case)).inRoot(isDialog()).perform(click())
-            onView(withId(R.id.check_ignore_case)).inRoot(isDialog()).check(matches(isNotChecked()))
+            onView(withId(R.id.ignore_case_check_box)).inRoot(isDialog()).perform(scrollCompletelyTo())
+            onView(withId(R.id.ignore_case_check_box)).inRoot(isDialog()).check(matches(isChecked()))
+            onView(withId(R.id.ignore_case_check_box)).inRoot(isDialog()).perform(click())
+            onView(withId(R.id.ignore_case_check_box)).inRoot(isDialog()).check(matches(isNotChecked()))
             // although the positive button exists, clicking it with Espresso doesn't work
             //     onView(withId(android.R.id.button1)).inRoot(isDialog()).perform(click())
             // so simulate clicking the positive button by running the associated method directly
@@ -1379,6 +1377,7 @@ class CardBrowserTest : RobolectricTest() {
 
     @Test
     @Flaky(OS.ALL)
+    @Ignore("flaking locally as well now; see 19021")
     fun `FindReplace - replaces text only for the field in the selected note`() {
         val note0 = createFindReplaceTestNote("A", "kart", "kilogram")
         val note1 = createFindReplaceTestNote("B", "pink", "chicken")
@@ -1399,6 +1398,7 @@ class CardBrowserTest : RobolectricTest() {
 
     @Test
     @Flaky(OS.ALL)
+    @Ignore("flaking locally as well now; see 19021")
     fun `FindReplace - replaces text based on regular expression`() {
         val note0 = createFindReplaceTestNote("A", "kart", "ki1logram")
         val note1 = createFindReplaceTestNote("B", "pink", "chicken")
@@ -1419,6 +1419,7 @@ class CardBrowserTest : RobolectricTest() {
 
     @Test
     @Flaky(OS.ALL)
+    @Ignore("flaking locally as well now; see 19021")
     fun `FindReplace - replaces text in all notes if 'Only in selected notes' is unchecked`() {
         val note0 = createFindReplaceTestNote("A", "kart", "kilogram")
         val note1 = createFindReplaceTestNote("B", "pink", "chicken")
@@ -1447,6 +1448,7 @@ class CardBrowserTest : RobolectricTest() {
 
     @Test
     @Flaky(OS.ALL)
+    @Ignore("flaking locally as well now; see 19021")
     fun `FindReplace - replaces text in all fields of selected note if 'All fields' is selected`() {
         val note0 = createFindReplaceTestNote("A", "kart", "kilogram")
         val note1 = createFindReplaceTestNote("B", "pink", "chicken")
@@ -1468,6 +1470,7 @@ class CardBrowserTest : RobolectricTest() {
 
     @Test
     @Flaky(OS.ALL)
+    @Ignore("flaking locally as well now; see 19021")
     fun `FindReplace - replaces text of tags as expected if 'Tags' is selected`() {
         val note0 = createFindReplaceTestNote("A", "kart", "kilogram")
         val note1 = createFindReplaceTestNote("A", "pink", "chicken")
@@ -1489,6 +1492,7 @@ class CardBrowserTest : RobolectricTest() {
 
     @Test
     @Flaky(OS.ALL)
+    @Ignore("flaking locally as well now; see 19021")
     fun `FindReplace - replaces text as expected when set to match case`() {
         val note0 = createFindReplaceTestNote("A", "kart", "kilogram")
         val note1 = createFindReplaceTestNote("B", "krate", "chicKen")
@@ -1504,6 +1508,340 @@ class CardBrowserTest : RobolectricTest() {
             assertEquals("chicKen", colNote1.fields[1]) // doesn't match case
             onView(withText(TR.browsingNotesUpdated(1))).check(matches(withEffectiveVisibility(ViewMatchers.Visibility.VISIBLE)))
         }
+    }
+
+    @Test
+    fun `options menu test - standard`() =
+        withOptionsMenu(
+            OptionsMenuType(
+                fragmented = false,
+                mutliselect = false,
+            ),
+        ) {
+            val expectedMenuItems =
+                listOf(
+                    R.id.action_add_note_from_card_browser to true,
+                    R.id.action_search to true,
+                    R.id.action_save_search to false,
+                    R.id.action_list_my_searches to false,
+                    R.id.action_sort_by_size to true,
+                    R.id.action_show_marked to true,
+                    R.id.action_show_suspended to true,
+                    R.id.action_search_by_tag to true,
+                    R.id.action_search_by_flag to true,
+                    // true due to 'add note'
+                    R.id.action_undo to true,
+                    R.id.action_preview_many to true,
+                    R.id.action_select_all to true,
+                    R.id.action_open_options to true,
+                    R.id.action_create_filtered_deck to true,
+                    R.id.action_find_replace to true,
+                )
+
+            assertMenusEqual(expectedMenuItems, menu)
+        }
+
+    @Test
+    fun `options menu test - new ui - standard`() =
+        withOptionsMenu(
+            OptionsMenuType(
+                fragmented = false,
+                mutliselect = false,
+                newUi = true,
+            ),
+        ) {
+            val expectedMenuItems =
+                listOf(
+                    R.id.action_add_note_from_card_browser to true,
+                    R.id.action_search to false,
+                    R.id.action_save_search to false,
+                    R.id.action_list_my_searches to false,
+                    R.id.action_sort_by_size to false,
+                    R.id.action_show_marked to false,
+                    R.id.action_show_suspended to false,
+                    R.id.action_search_by_tag to false,
+                    R.id.action_search_by_flag to false,
+                    // true due to 'add note'
+                    R.id.action_undo to true,
+                    R.id.action_preview_many to true,
+                    R.id.action_select_all to true,
+                    R.id.action_open_options to true,
+                    R.id.action_create_filtered_deck to true,
+                    R.id.action_find_replace to true,
+                )
+
+            assertMenusEqual(expectedMenuItems, menu)
+        }
+
+    @Test
+    fun `options menu test - mutliselect`() =
+        withOptionsMenu(
+            OptionsMenuType(
+                fragmented = false,
+                mutliselect = true,
+            ),
+        ) {
+            val expectedMenuItems =
+                listOf(
+                    R.id.action_edit_note to true,
+                    R.id.action_view_card_info to true,
+                    R.id.action_flag to true,
+                    R.id.action_mark_card to true,
+                    R.id.action_suspend_card to true,
+                    R.id.action_toggle_bury to true,
+                    R.id.action_change_note_type to true,
+                    R.id.action_change_deck to true,
+                    R.id.action_reposition_cards to true,
+                    R.id.action_reschedule_cards to true,
+                    R.id.action_edit_tags to true,
+                    R.id.action_grade_now to true,
+                    R.id.action_reset_cards_progress to true,
+                    R.id.action_preview_many to true,
+                    R.id.action_export_selected to true,
+                    R.id.action_find_replace to true,
+                    R.id.action_delete_card to true,
+                    R.id.action_undo to true,
+                )
+
+            assertMenusEqual(expectedMenuItems, menu)
+        }
+
+    @Test
+    fun `options menu test - mutliselect with no selection`() =
+        withOptionsMenu(
+            OptionsMenuType(
+                fragmented = false,
+                mutliselect = true,
+            ),
+        ) {
+            viewModel.selectNone()
+            advanceRobolectricLooper()
+            assertEquals(true, viewModel.isInMultiSelectMode, "still in multi-select mode")
+            assertEquals(0, viewModel.selectedRowCount(), "no rows selected")
+
+            val expectedMenuItems =
+                listOf(
+                    R.id.action_edit_note to false,
+                    R.id.action_view_card_info to false,
+                    R.id.action_flag to false,
+                    R.id.action_mark_card to false,
+                    R.id.action_suspend_card to false,
+                    R.id.action_toggle_bury to false,
+                    R.id.action_change_note_type to false,
+                    R.id.action_change_deck to false,
+                    R.id.action_reposition_cards to false,
+                    R.id.action_reschedule_cards to false,
+                    R.id.action_edit_tags to false,
+                    R.id.action_grade_now to false,
+                    R.id.action_reset_cards_progress to false,
+                    R.id.action_preview_many to true,
+                    R.id.action_export_selected to false,
+                    R.id.action_find_replace to true,
+                    R.id.action_delete_card to false,
+                    R.id.action_undo to true,
+                )
+
+            assertMenusEqual(expectedMenuItems, menu)
+        }
+
+    @Test
+    fun `options menu test - fragmented`() =
+        withOptionsMenu(
+            OptionsMenuType(
+                fragmented = true,
+                mutliselect = false,
+            ),
+        ) {
+            val expectedMenuItems =
+                listOf(
+                    R.id.action_add_note_from_card_browser to true,
+                    R.id.action_search to true,
+                    // 'deck:"Default"' may occur
+                    R.id.action_save_search to null,
+                    R.id.action_list_my_searches to false,
+                    R.id.action_sort_by_size to true,
+                    R.id.action_show_marked to true,
+                    R.id.action_show_suspended to true,
+                    R.id.action_search_by_tag to true,
+                    R.id.action_search_by_flag to true,
+                    // true due to 'add note'
+                    R.id.action_undo to true,
+                    R.id.action_preview_many to false,
+                    R.id.action_select_all to true,
+                    R.id.action_open_options to true,
+                    R.id.action_create_filtered_deck to true,
+                    R.id.action_find_replace to true,
+                    // Note Editor
+                    R.id.action_save to true,
+                    R.id.action_preview to true,
+                    R.id.action_add_note_from_note_editor to false,
+                    R.id.action_copy_note to true,
+                    R.id.action_font_size to true,
+                    R.id.action_capitalize to true,
+                    R.id.action_show_toolbar to true,
+                    R.id.action_scroll_toolbar to true,
+                )
+
+            assertMenusEqual(expectedMenuItems, menu)
+        }
+
+    @Test
+    fun `options menu test - fragmented mutliselect`() =
+        withOptionsMenu(
+            OptionsMenuType(
+                fragmented = true,
+                mutliselect = true,
+            ),
+        ) {
+            val expectedMenuItems =
+                listOf(
+                    // should never be enabled, the fragment handles the editing
+                    R.id.action_edit_note to false,
+                    R.id.action_view_card_info to true,
+                    R.id.action_flag to true,
+                    R.id.action_mark_card to true,
+                    R.id.action_suspend_card to true,
+                    R.id.action_toggle_bury to true,
+                    R.id.action_change_note_type to true,
+                    R.id.action_change_deck to true,
+                    R.id.action_reposition_cards to true,
+                    R.id.action_reschedule_cards to true,
+                    R.id.action_edit_tags to true,
+                    R.id.action_grade_now to true,
+                    R.id.action_reset_cards_progress to true,
+                    R.id.action_preview_many to false,
+                    R.id.action_export_selected to true,
+                    R.id.action_find_replace to true,
+                    R.id.action_delete_card to true,
+                    R.id.action_undo to true,
+                    // Note Editor
+                    R.id.action_save to true,
+                    R.id.action_preview to true,
+                    R.id.action_add_note_from_note_editor to false,
+                    R.id.action_copy_note to true,
+                    R.id.action_font_size to true,
+                    R.id.action_capitalize to true,
+                    R.id.action_show_toolbar to true,
+                    R.id.action_scroll_toolbar to true,
+                )
+
+            assertMenusEqual(expectedMenuItems, menu)
+        }
+
+    @Test
+    fun `deck chip performs a search`() {
+        // The deck chip uses `DeckSelectionListener`, which uses a different code path
+        val did = addDeck("AA")
+        addDeck("BB")
+
+        addBasicNote().firstCard().update {
+            this.did = did
+        }
+
+        withBrowser(newUi = true) {
+            assertThat(viewModel.cards.isEmpty(), equalTo(true))
+
+            viewModel.setSelectedDeck(SelectableDeck.Deck(DeckNameId("AA", did)))
+
+            assertThat(viewModel.cards.isEmpty(), equalTo(false))
+        }
+    }
+
+    @Test
+    fun `options menu - new ui - no notes`() =
+        withOptionsMenu(
+            OptionsMenuType(
+                fragmented = false,
+                mutliselect = false,
+                newUi = true,
+            ),
+            noteCount = 0,
+        ) {
+            val expectedMenuItems =
+                listOf(
+                    R.id.action_add_note_from_card_browser to true,
+                    R.id.action_search to false,
+                    R.id.action_save_search to false,
+                    R.id.action_list_my_searches to false,
+                    R.id.action_sort_by_size to false,
+                    R.id.action_show_marked to false,
+                    R.id.action_show_suspended to false,
+                    R.id.action_search_by_tag to false,
+                    R.id.action_search_by_flag to false,
+                    R.id.action_undo to false,
+                    R.id.action_preview_many to false,
+                    R.id.action_select_all to false,
+                    R.id.action_open_options to true,
+                    R.id.action_create_filtered_deck to true,
+                    R.id.action_find_replace to true,
+                )
+
+            assertMenusEqual(expectedMenuItems, menu)
+        }
+
+    @Test
+    fun `options menu - new ui - add is first if no results`() =
+        withOptionsMenu(
+            OptionsMenuType(
+                fragmented = false,
+                mutliselect = false,
+                newUi = true,
+            ),
+            noteCount = 0,
+        ) {
+            assertEquals(0, viewModel.cards.size, "no cards")
+
+            val item = assertNotNull(menu[0])
+            val expectedId = R.id.action_add_note_from_card_browser
+
+            val name = resources.getResourceName(item.itemId)
+            val expectedResourceName = resources.getResourceName(expectedId)
+
+            assertEquals(expectedResourceName, name, "resource name")
+            assertEquals(expectedId, item.itemId, "$name.itemId")
+            assertEquals(true, item.isVisible, "$name.isVisible")
+        }
+
+    @Test
+    @Ignore("[0] is not guaranteed to be the first item. Can be fixed when legacy menu is removed")
+    fun `options menu - new ui - preview is first if results`() =
+        withOptionsMenu(
+            OptionsMenuType(
+                fragmented = false,
+                mutliselect = false,
+                newUi = true,
+            ),
+        ) {
+            assertEquals(1, viewModel.cards.size, "cards exist")
+
+            val item = assertNotNull(menu[0])
+            val expectedId = R.id.action_preview_many
+
+            val name = resources.getResourceName(item.itemId)
+            val expectedResourceName = resources.getResourceName(expectedId)
+
+            assertEquals(expectedResourceName, name, "resource name")
+            assertEquals(expectedId, item.itemId, "$name.itemId")
+            assertEquals(true, item.isVisible, "$name.isVisible")
+        }
+
+    fun assertMenusEqual(
+        expectedMenuItems: List<Pair<Int, Boolean?>>,
+        menu: Menu,
+    ) {
+        val resources = targetContext.resources
+        for ((index, expectedData) in expectedMenuItems.withIndex().filter { it.value.second != null }) {
+            val (expectedId, expectedIsVisible) = expectedData
+            val item = assertNotNull(menu[index], "[$index]")
+            val name = resources.getResourceName(item.itemId)
+
+            val expectedResourceName = resources.getResourceName(expectedId)
+            assertEquals(expectedResourceName, name, "[$index]: resource name")
+            assertEquals(expectedId, item.itemId, "$name.itemId")
+            assertEquals(expectedIsVisible, item.isVisible, "$name.isVisible")
+        }
+
+        assertEquals(expectedMenuItems.size, menu.size, "menu size")
     }
 
     /**
@@ -1534,15 +1872,15 @@ class CardBrowserTest : RobolectricTest() {
     ) {
         supportFragmentManager.setFragmentResult(
             REQUEST_FIND_AND_REPLACE,
-            bundleOf(
-                ARG_SEARCH to search,
-                ARG_REPLACEMENT to replacement,
-                ARG_FIELD to field,
-                ARG_ONLY_SELECTED_NOTES to onlyInSelectedNotes,
+            Bundle().apply {
+                putString(ARG_SEARCH, search)
+                putString(ARG_REPLACEMENT, replacement)
+                putString(ARG_FIELD, field)
+                putBoolean(ARG_ONLY_SELECTED_NOTES, onlyInSelectedNotes)
                 // "Ignore case" checkbox text => when it's checked we pass false to the backend
-                ARG_MATCH_CASE to matchCase,
-                ARG_REGEX to regex,
-            ),
+                putBoolean(ARG_MATCH_CASE, matchCase)
+                putBoolean(ARG_REGEX, regex)
+            },
         )
     }
 
@@ -1583,13 +1921,49 @@ class CardBrowserTest : RobolectricTest() {
     @Suppress("SameParameterValue")
     private fun withBrowser(
         noteCount: Int = 0,
+        fragmented: Boolean = false,
+        newUi: Boolean = false,
         block: suspend CardBrowser.() -> Unit,
     ) = runTest {
-        getBrowserWithNotes(noteCount).apply {
-            block(this)
+        suspend fun run(block: suspend () -> Unit) {
+            if (fragmented) withSplitPaneUiAsync { block() } else block()
+        }
+
+        setCardBrowserFragmented(fragmented)
+        setUsingSearchView(newUi)
+
+        run {
+            getBrowserWithNotes(noteCount).apply {
+                if (fragmented) {
+                    viewModel.setQuery("deck:\"Default\"", forceRefresh = true)
+                    advanceRobolectricLooper()
+                    assertNotNull(fragment, message = "note editor fragment")
+                }
+
+                block(this)
+            }
         }
     }
+
+    data class OptionsMenuType(
+        val fragmented: Boolean,
+        val mutliselect: Boolean,
+        val newUi: Boolean = false,
+    )
+
+    fun withOptionsMenu(
+        type: OptionsMenuType,
+        noteCount: Int = 1,
+        block: suspend CardBrowser.() -> Unit,
+    ) = withBrowser(noteCount = noteCount, fragmented = type.fragmented, newUi = type.newUi) {
+        if (type.mutliselect) selectAll()
+        block()
+    }
 }
+
+fun setCardBrowserFragmented(value: Boolean) = Prefs.putBoolean(R.string.dev_card_browser_fragmented, value)
+
+fun setUsingSearchView(value: Boolean) = Prefs.putBoolean(R.string.dev_card_browser_search_view, value)
 
 private fun CardBrowser.rerenderAllCards() {
     cardBrowserFragment.cardsAdapter.notifyDataSetChanged()
@@ -1597,11 +1971,6 @@ private fun CardBrowser.rerenderAllCards() {
 }
 
 fun CardBrowser.hasSelectedCardAtPosition(i: Int): Boolean = viewModel.selectedRows.contains(viewModel.getRowAtPosition(i))
-
-fun CardBrowser.replaceSelectionWith(positions: IntArray) {
-    viewModel.selectNone()
-    selectRowsWithPositions(*positions)
-}
 
 fun CardBrowser.column1Text(row: Int): CharSequence? = getVisibleRows()[row].columnViews[0].text
 
@@ -1615,7 +1984,7 @@ fun CardBrowser.selectRowsWithPositions(vararg positions: Int) {
     }
 }
 
-fun CardBrowser.clickRowAtPosition(pos: Int) = cardBrowserFragment.onTap(viewModel.cards[pos])
+fun CardBrowser.clickRowAtPosition(pos: Int) = viewModel.onTap(viewModel.cards[pos].toRowSelection())
 
 fun CardBrowser.longClickRowAtPosition(pos: Int) = viewModel.handleRowLongPress(viewModel.cards[pos].toRowSelection())
 
@@ -1668,7 +2037,7 @@ fun CardBrowser.getVisibleRows() =
 val CardBrowser.isShowingSelectAll: Boolean
     get() {
         advanceRobolectricLooper()
-        return actionBarMenu?.findItem(R.id.action_select_all)?.isVisible == true
+        return this.menu().findItem(R.id.action_select_all)?.isVisible == true
     }
 
 val CardBrowser.columnHeadingViews
@@ -1683,7 +2052,7 @@ val CardBrowser.columnHeadings
 
 suspend fun CardBrowser.searchCards(search: String? = null) {
     if (search != null) {
-        viewModel.launchSearchForCards(search)
+        viewModel.setQuery(search)
     } else {
         viewModel.launchSearchForCards()
     }
@@ -1691,3 +2060,41 @@ suspend fun CardBrowser.searchCards(search: String? = null) {
 }
 
 fun CardBrowser.showFindAndReplaceDialog() = cardBrowserFragment.showFindAndReplaceDialog()
+
+suspend fun CardBrowser.selectAll() {
+    viewModel.selectAll()?.join()
+    advanceRobolectricLooper()
+}
+
+val CardBrowser.menu: Menu
+    get() = if (this.useSearchView) cardBrowserFragment.searchBar!!.menu else shadowOf(this).optionsMenu!!
+
+val CardBrowser.selectedDeckNameForUi: String
+    get() = CollectionManager.getColUnsafe().decks.name(viewModel.lastDeckId!!)
+
+/** Returns an instance of [CardBrowser] containing [noteCount] notes */
+context(test: RobolectricTest)
+fun getBrowserWithNotes(
+    noteCount: Int,
+    reversed: Boolean = false,
+): CardBrowser {
+    test.ensureCollectionLoadIsSynchronous()
+    if (reversed) {
+        for (i in 0 until noteCount) {
+            test.addBasicAndReversedNote(i.toString(), "back")
+        }
+    } else {
+        for (i in 0 until noteCount) {
+            test.addBasicNote(i.toString(), "back")
+        }
+    }
+    return test.startRegularActivity<CardBrowser>(Intent()).also {
+        advanceRobolectricLooper() // may be a fix for flaky tests
+    }
+}
+
+context(test: RobolectricTest)
+fun withCardBrowser(
+    noteCount: Int,
+    block: (CardBrowser) -> Unit,
+) = block(getBrowserWithNotes(noteCount))

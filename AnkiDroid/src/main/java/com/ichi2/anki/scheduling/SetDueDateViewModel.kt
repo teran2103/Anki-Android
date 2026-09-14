@@ -1,18 +1,4 @@
-/*
- *  Copyright (c) 2024 David Allison <davidallisongithub@gmail.com>
- *
- *  This program is free software; you can redistribute it and/or modify it under
- *  the terms of the GNU General Public License as published by the Free Software
- *  Foundation; either version 3 of the License, or (at your option) any later
- *  version.
- *
- *  This program is distributed in the hope that it will be useful, but WITHOUT ANY
- *  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
- *  PARTICULAR PURPOSE. See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with
- *  this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 package com.ichi2.anki.scheduling
 
@@ -133,16 +119,16 @@ class SetDueDateViewModel : ViewModel() {
     val currentInterval = MutableStateFlow<ReviewIntervalDays?>(null)
 
     fun init(
-        cardIds: LongArray,
+        cardIds: List<CardId>,
         fsrsEnabled: Boolean,
     ) {
-        this.cardIds = cardIds.toList()
+        this.cardIds = cardIds
         this.fsrsEnabled = fsrsEnabled
 
         initCurrentInterval(cardIds)
     }
 
-    private fun initCurrentInterval(cardIds: LongArray) {
+    private fun initCurrentInterval(cardIds: List<CardId>) {
         // Current interval cannot be shown if multiple cards are selected
         if (cardCount > 1) {
             return
@@ -208,12 +194,13 @@ class SetDueDateViewModel : ViewModel() {
     enum class Tab(
         val position: Int,
         @DrawableRes val icon: Int,
+        val text: Int,
     ) {
         /** Set the due date to a single day */
-        SINGLE_DAY(0, R.drawable.calendar_single_day),
+        SINGLE_DAY(0, R.drawable.calendar_single_day, R.string.set_due_date_day),
 
         /** Sets the due date randomly between a range of days */
-        DATE_RANGE(1, R.drawable.calendar_date_range),
+        DATE_RANGE(1, R.drawable.calendar_date_range, R.string.set_due_date_date_range),
     }
 
     class DateRange(

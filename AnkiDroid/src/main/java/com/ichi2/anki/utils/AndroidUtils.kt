@@ -1,16 +1,4 @@
-/*
- * This program is free software; you can redistribute it and/or modify it under
- * the terms of the GNU General Public License as published by the Free Software
- * Foundation; either version 3 of the License, or (at your option) any later
- * version.
- *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY
- * WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
- * PARTICULAR PURPOSE. See the GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along with
- * this program. If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 package com.ichi2.anki.utils
 
@@ -25,13 +13,16 @@ import android.view.inputmethod.InputMethodManager
 import androidx.annotation.StringRes
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
-import com.ichi2.anki.AnkiDroidApp
 import com.ichi2.anki.R
-import com.ichi2.anki.showThemedToast
+import com.ichi2.anki.common.android.AdaptionUtil
+import com.ichi2.anki.common.android.appContext
+import com.ichi2.anki.common.utils.android.showThemedToast
 import com.ichi2.anki.snackbar.showSnackbar
-import com.ichi2.utils.AdaptionUtil
 import com.ichi2.utils.copyToClipboard
 import timber.log.Timber
 
@@ -50,7 +41,7 @@ inline fun <T> withWakeLock(
     tag: String,
     block: () -> T,
 ): T {
-    val context = AnkiDroidApp.instance
+    val context = appContext
     val wakeLock =
         ContextCompat
             .getSystemService(context, PowerManager::class.java)!!
@@ -135,4 +126,39 @@ fun Fragment.hideKeyboard() {
 fun View.hideKeyboard() {
     val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
     imm.hideSoftInputFromWindow(windowToken, 0)
+}
+
+/**
+ * Hides the IME, and runs [block] after the operation completes
+ *
+ * [block] may be executed immediately if the IME is already hidden
+ *
+ * @param block the code to run after the IME is hidden. Run at most once
+ */
+fun FragmentActivity.doOnImeHidden(block: () -> Unit) {
+    val view = window.decorView
+    WindowInsetsControllerCompat(window, view).hide(WindowInsetsCompat.Type.ime())
+
+    var blockHasRun = false
+
+    fun runBlockOnce() {
+        if (blockHasRun) return
+        blockHasRun = true
+        Timber.v("IME hidden. executing...")
+        block()
+    }
+
+    ViewCompat.setOnApplyWindowInsetsListener(view) { _, insets ->
+        val imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
+
+        if (!imeVisible) {
+            ViewCompat.setOnApplyWindowInsetsListener(view, null)
+            runBlockOnce()
+        }
+
+        insets
+    }
+
+    // ensure the block is run immediately if the IME is already hidden
+    ViewCompat.requestApplyInsets(view)
 }

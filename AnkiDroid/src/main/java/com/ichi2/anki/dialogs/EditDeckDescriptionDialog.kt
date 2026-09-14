@@ -1,18 +1,4 @@
-/*
- *  Copyright (c) 2024 David Allison <davidallisongithub@gmail.com>
- *
- *  This program is free software; you can redistribute it and/or modify it under
- *  the terms of the GNU General Public License as published by the Free Software
- *  Foundation; either version 3 of the License, or (at your option) any later
- *  version.
- *
- *  This program is distributed in the hope that it will be useful, but WITHOUT ANY
- *  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
- *  PARTICULAR PURPOSE. See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with
- *  this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 package com.ichi2.anki.dialogs
 
@@ -21,9 +7,9 @@ import android.os.Bundle
 import android.view.View
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AlertDialog
-import androidx.core.os.bundleOf
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.widget.doAfterTextChanged
 import androidx.core.widget.doOnTextChanged
 import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.viewModels
@@ -40,6 +26,7 @@ import com.ichi2.anki.utils.ext.dismissAllDialogFragments
 import com.ichi2.utils.AndroidUiUtils.hideKeyboard
 import com.ichi2.utils.AndroidUiUtils.setFocusAndOpenKeyboard
 import com.ichi2.utils.create
+import com.ichi2.utils.handleOutsideTouch
 import com.ichi2.utils.moveCursorToEnd
 import com.ichi2.utils.negativeButton
 import com.ichi2.utils.positiveButton
@@ -85,6 +72,7 @@ class EditDeckDescriptionDialog : DialogFragment() {
                 setOnShowListener {
                     positiveButton.setOnClickListener { viewModel.saveAndExit() }
                     negativeButton.setOnClickListener { viewModel.onBackRequested() }
+                    handleOutsideTouch(binding) { viewModel.onBackRequested() }
                 }
                 setCanceledOnTouchOutside(false)
                 setCancelable(false)
@@ -129,6 +117,14 @@ class EditDeckDescriptionDialog : DialogFragment() {
                     // FIXME: the upstream string unexpectedly contains newlines
                     setMessage(TR.deckConfigDescriptionNewHandlingHint().replace("\n", " ").replace("  ", " "))
                 }
+            }
+        }
+
+        with(binding.deckDescriptionInput) {
+            doAfterTextChanged {
+                // avoid an additional layout pass in the same frame as
+                // TextInputLayout's internal requestLayout(), which causes shaking
+                (this.parent as? View)?.post { requestLayout() }
             }
         }
 
@@ -202,9 +198,9 @@ class EditDeckDescriptionDialog : DialogFragment() {
         fun newInstance(deckId: DeckId): EditDeckDescriptionDialog =
             EditDeckDescriptionDialog().apply {
                 arguments =
-                    bundleOf(
-                        EditDeckDescriptionDialogViewModel.ARG_DECK_ID to deckId,
-                    )
+                    Bundle().apply {
+                        putLong(EditDeckDescriptionDialogViewModel.ARG_DECK_ID, deckId)
+                    }
             }
     }
 }

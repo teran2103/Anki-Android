@@ -1,18 +1,5 @@
-/*
- *  Copyright (c) 2024 Anoop <xenonnn4w@gmail.com>
- *
- *  This program is free software; you can redistribute it and/or modify it under
- *  the terms of the GNU General Public License as published by the Free Software
- *  Foundation; either version 3 of the License, or (at your option) any later
- *  version.
- *
- *  This program is distributed in the hope that it will be useful, but WITHOUT ANY
- *  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
- *  PARTICULAR PURPOSE. See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with
- *  this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-FileCopyrightText: Copyright (c) 2024 Anoop <xenonnn4w@gmail.com>
 
 package com.ichi2.widget.cardanalysis
 
@@ -24,21 +11,24 @@ import android.content.Context
 import android.content.Intent
 import android.view.View
 import android.widget.RemoteViews
-import com.ichi2.anki.AnkiDroidApp
-import com.ichi2.anki.CrashReportService
-import com.ichi2.anki.IntentHandler.Companion.intentToReviewDeckFromShortcuts
 import com.ichi2.anki.R
-import com.ichi2.anki.analytics.UsageAnalytics
+import com.ichi2.anki.common.coroutines.applicationScope
+import com.ichi2.anki.common.crashreporting.CrashReportService
+import com.ichi2.anki.common.destinations.DeckOptionsDestination
+import com.ichi2.anki.common.destinations.DeferredNavigation
+import com.ichi2.anki.common.destinations.ReviewDeckDestination
+import com.ichi2.anki.common.destinations.toIntent
 import com.ichi2.anki.isCollectionEmpty
 import com.ichi2.anki.libanki.DeckId
 import com.ichi2.anki.libanki.Decks.Companion.NOT_FOUND_DECK_ID
-import com.ichi2.anki.pages.DeckOptionsDestination
+import com.ichi2.anki.pages.fromDeckId
 import com.ichi2.widget.ACTION_UPDATE_WIDGET
 import com.ichi2.widget.AnalyticsWidgetProvider
 import com.ichi2.widget.AppWidgetId
 import com.ichi2.widget.AppWidgetId.Companion.INVALID_APPWIDGET_ID
 import com.ichi2.widget.AppWidgetId.Companion.getAppWidgetId
 import com.ichi2.widget.AppWidgetIds
+import com.ichi2.widget.DayRolloverAlarm
 import com.ichi2.widget.cancelRecurringAlarm
 import com.ichi2.widget.deckpicker.DeckWidgetData
 import com.ichi2.widget.deckpicker.getDeckNameAndStats
@@ -88,7 +78,7 @@ class CardAnalysisWidget : AnalyticsWidgetProvider() {
                 return
             }
 
-            AnkiDroidApp.applicationScope.launch {
+            applicationScope.launch {
                 val isCollectionEmpty = isCollectionEmpty()
                 if (isCollectionEmpty) {
                     showCollectionDeck(context, appWidgetManager, appWidgetId, remoteViews)
@@ -193,9 +183,9 @@ class CardAnalysisWidget : AnalyticsWidgetProvider() {
 
             val intent =
                 if (!isEmptyDeck) {
-                    intentToReviewDeckFromShortcuts(context, deckData.deckId)
+                    with(DeferredNavigation) { ReviewDeckDestination.ExternalLaunch(deckData.deckId).toIntent() }
                 } else {
-                    DeckOptionsDestination.fromDeckId(deckData.deckId).toIntent(context)
+                    with(DeferredNavigation) { DeckOptionsDestination.fromDeckId(deckData.deckId).toIntent() }
                 }
             val pendingIntent =
                 PendingIntent.getActivity(
@@ -229,11 +219,15 @@ class CardAnalysisWidget : AnalyticsWidgetProvider() {
         }
     }
 
+    override fun onEnabled(context: Context) {
+        super.onEnabled(context)
+        DayRolloverAlarm.scheduleNext(context)
+    }
+
     override fun performUpdate(
         context: Context,
         appWidgetManager: AppWidgetManager,
         appWidgetIds: AppWidgetIds,
-        usageAnalytics: UsageAnalytics,
     ) {
         Timber.d("Performing widget update for appWidgetIds: %s", appWidgetIds)
 
@@ -243,7 +237,7 @@ class CardAnalysisWidget : AnalyticsWidgetProvider() {
             // Get the selected deck ID internally
             val selectedDeckId = getDeckIdForWidget(context, widgetId)
 
-            /**
+            /*
              * Explanation of behavior when selectedDeckId is empty
              * If selectedDeckId is empty, the widget will retain the previous deck.
              * This behavior ensures that the widget does not display an empty view, which could be
@@ -300,7 +294,7 @@ class CardAnalysisWidget : AnalyticsWidgetProvider() {
                 }
             }
             AppWidgetManager.ACTION_APPWIDGET_OPTIONS_CHANGED -> {
-                // TODO: #17151 not yet handled. Exists to stop ACRA errors
+                Timber.d("ACTION_APPWIDGET_OPTIONS_CHANGED received from CardAnalysisWidget")
             }
             AppWidgetManager.ACTION_APPWIDGET_DELETED -> {
                 Timber.d("ACTION_APPWIDGET_DELETED received")

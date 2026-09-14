@@ -23,9 +23,9 @@ import android.widget.FrameLayout
 import androidx.core.content.withStyledAttributes
 import com.google.android.material.color.MaterialColors
 import com.ichi2.anki.R
-import com.ichi2.anki.databinding.PermissionsItemBinding
+import com.ichi2.anki.common.permissions.hasAllPermissions
+import com.ichi2.anki.databinding.ViewPermissionsItemBinding
 import com.ichi2.anki.utils.ext.usingStyledAttributes
-import com.ichi2.utils.Permissions
 import timber.log.Timber
 
 /**
@@ -54,13 +54,13 @@ class PermissionsItem(
     context: Context,
     attrs: AttributeSet,
 ) : FrameLayout(context, attrs) {
-    val binding = PermissionsItemBinding.inflate(LayoutInflater.from(context), this, true)
+    val binding = ViewPermissionsItemBinding.inflate(LayoutInflater.from(context), this, true)
 
     /**
      * The value of either app:permissions or app:permission.
      */
     val permissions: List<String>
-    val areGranted get() = Permissions.hasAllPermissions(context, permissions)
+    val areGranted get() = hasAllPermissions(context, permissions)
 
     init {
         binding.switchWidget.apply {

@@ -23,15 +23,28 @@ import anki.media.CheckMediaResponse
 import com.ichi2.anki.CollectionManager.withCol
 import com.ichi2.anki.common.annotations.NeedsTest
 import com.ichi2.anki.observability.undoableOp
+import com.ichi2.anki.progress.HasProgress
+import com.ichi2.anki.progress.ProgressManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
+/** The operation [MediaCheckViewModel] is running, shown as a progress message by the UI. */
+enum class MediaCheckProgress {
+    CHECKING_MEDIA,
+    ADDING_TAGS,
+    DELETING_MEDIA,
+}
+
 @NeedsTest("Test the media check process i.e. the buttons and views")
-class MediaCheckViewModel : ViewModel() {
-    private val _mediaCheckResult = MutableStateFlow<CheckMediaResponse?>(null)
-    val mediaCheckResult: StateFlow<CheckMediaResponse?> = _mediaCheckResult
+class MediaCheckViewModel :
+    ViewModel(),
+    HasProgress<MediaCheckProgress> {
+    override val progressManager = ProgressManager<MediaCheckProgress>()
+
+    val mediaCheckResult: StateFlow<CheckMediaResponse?>
+        field = MutableStateFlow<CheckMediaResponse?>(null)
 
     private val deletedFilesCount: MutableStateFlow<Int> = MutableStateFlow(0)
     private val taggedFilesCount: MutableStateFlow<Int> = MutableStateFlow(0)
@@ -42,34 +55,41 @@ class MediaCheckViewModel : ViewModel() {
     val taggedFiles: Int
         get() = taggedFilesCount.value
 
-    // TODO: Move progress notifications here
     fun tagMissing(tag: String): Job =
         viewModelScope.launch {
-            val taggedNotes =
-                undoableOp {
-                    tags.bulkAdd(_mediaCheckResult.value?.missingMediaNotesList ?: listOf(), tag)
-                }
-            taggedFilesCount.value = taggedNotes.count
+            progressManager.withProgress(message = MediaCheckProgress.ADDING_TAGS) {
+                val taggedNotes =
+                    undoableOp {
+                        tags.bulkAdd(mediaCheckResult.value?.missingMediaNotesList ?: listOf(), tag)
+                    }
+                taggedFilesCount.value = taggedNotes.count
+            }
         }
 
     fun checkMedia(): Job =
         viewModelScope.launch {
-            val result = withCol { media.check() }
-            _mediaCheckResult.value = result
+            progressManager.withProgress(message = MediaCheckProgress.CHECKING_MEDIA) {
+                mediaCheckResult.value = withCol { media.check() }
+            }
         }
 
-    fun deleteTrash(): Job = viewModelScope.launch { withCol { media.emptyTrash() } }
+    fun deleteTrash(): Job =
+        viewModelScope.launch {
+            progressManager.withProgress { withCol { media.emptyTrash() } }
+        }
 
     fun restoreTrash(): Job =
         viewModelScope.launch {
-            withCol { media.restoreTrash() }
+            progressManager.withProgress { withCol { media.restoreTrash() } }
         }
 
     // TODO: investigate: the underlying implementation exposes progress, which we do not yet handle.
     fun deleteUnusedMedia(): Job =
         viewModelScope.launch {
-            val unused = _mediaCheckResult.value?.unusedList ?: listOf()
-            withCol { media.trashFiles(unused) }
-            deletedFilesCount.value = unused.size
+            progressManager.withProgress(message = MediaCheckProgress.DELETING_MEDIA) {
+                val unused = mediaCheckResult.value?.unusedList ?: listOf()
+                withCol { media.trashFiles(unused) }
+                deletedFilesCount.value = unused.size
+            }
         }
 }

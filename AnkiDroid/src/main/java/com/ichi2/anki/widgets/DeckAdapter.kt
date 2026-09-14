@@ -1,18 +1,5 @@
-/*
- * Copyright (c) 2015 Houssam Salem <houssam.salem.au@gmail.com>
- *
- * This program is free software; you can redistribute it and/or modify it under
- * the terms of the GNU General Public License as published by the Free Software
- * Foundation; either version 3 of the License, or (at your option) any later
- * version.
- *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY
- * WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
- * PARTICULAR PURPOSE. See the GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along with
- * this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-FileCopyrightText: Copyright (c) 2015 Houssam Salem <houssam.salem.au@gmail.com>
 
 package com.ichi2.anki.widgets
 
@@ -22,21 +9,22 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageButton
-import android.widget.LinearLayout
-import android.widget.RelativeLayout
-import android.widget.TextView
 import androidx.core.content.res.getDrawableOrThrow
 import androidx.core.content.withStyledAttributes
+import androidx.core.view.isGone
+import androidx.core.view.isInvisible
+import androidx.core.view.isVisible
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.ichi2.anki.R
-import com.ichi2.anki.common.annotations.NeedsTest
+import com.ichi2.anki.databinding.ItemDeckBinding
 import com.ichi2.anki.deckpicker.DisplayDeckNode
 import com.ichi2.anki.libanki.DeckId
-import com.ichi2.anki.utils.ext.findViewById
+import com.ichi2.utils.dp
 import kotlinx.coroutines.runBlocking
 import net.ankiweb.rsdroid.RustCleanup
+import com.ichi2.anki.common.android.R as CommonR
 
 /**
  * A [RecyclerView.Adapter] used to show the list of decks inside [com.ichi2.anki.DeckPicker].
@@ -73,8 +61,18 @@ class DeckAdapter(
     private var selectableItemBackground: Int = 0
     private val endPadding: Int = context.resources.getDimension(R.dimen.deck_picker_right_padding).toInt()
     private val startPadding: Int = context.resources.getDimension(R.dimen.deck_picker_left_padding).toInt()
-    private val startPaddingSmall: Int = context.resources.getDimension(R.dimen.deck_picker_left_padding_small).toInt()
-    private val nestedIndent = context.resources.getDimension(R.dimen.keyline_1).toInt()
+
+    /** Left padding when the view has subdecks */
+    val startPaddingSmall: Int = context.resources.getDimension(R.dimen.deck_picker_left_padding_small).toInt()
+
+    /** Padding to apply for each depth level of a deck */
+    val nestedIndent = context.resources.getDimension(R.dimen.keyline_1).toInt()
+
+    /** The width of the expander chevron icon */
+    val expanderWidth = 48.dp.toPx(context)
+
+    /** Visual offset applied to non-root expanders without moving the deck name. */
+    val nestedExpanderOffset = 2.dp.toPx(context).toFloat()
 
     // Flags
     private var hasSubdecks = false
@@ -92,17 +90,8 @@ class DeckAdapter(
         }
 
     class ViewHolder(
-        v: View,
-    ) : RecyclerView.ViewHolder(v) {
-        val deckLayout: RelativeLayout = findViewById(R.id.DeckPickerHoriz)
-        val countsLayout: LinearLayout = findViewById(R.id.counts_layout)
-        val deckExpander: ImageButton = findViewById(R.id.deckpicker_expander)
-        val indentView: ImageButton = findViewById(R.id.deckpicker_indent)
-        val deckName: TextView = findViewById(R.id.deckpicker_name)
-        val deckNew: TextView = findViewById(R.id.deckpicker_new)
-        val deckLearn: TextView = findViewById(R.id.deckpicker_lrn)
-        val deckRev: TextView = findViewById(R.id.deckpicker_rev)
-    }
+        val binding: ItemDeckBinding,
+    ) : RecyclerView.ViewHolder(binding.root)
 
     /**
      * Set new data in the adapter. This should be used instead of [submitList] (which is called
@@ -124,7 +113,6 @@ class DeckAdapter(
      * Update the current selected deck so the adapter shows the proper backgrounds.
      * Calls [notifyDataSetChanged].
      */
-    @NeedsTest("18658: ensure a deck can be selected after this")
     fun updateSelectedDeck(deckId: DeckId) {
         submitList(
             this.currentList.map { it.withUpdatedDeckId(deckId) },
@@ -134,67 +122,68 @@ class DeckAdapter(
     override fun onCreateViewHolder(
         parent: ViewGroup,
         viewType: Int,
-    ): ViewHolder = ViewHolder(layoutInflater.inflate(R.layout.deck_item, parent, false))
+    ): ViewHolder = ViewHolder(ItemDeckBinding.inflate(layoutInflater, parent, false))
 
     override fun onBindViewHolder(
         holder: ViewHolder,
         position: Int,
     ) {
+        val binding = holder.binding
         val node = getItem(position)
         // Set the expander icon and padding according to whether or not there are any subdecks
-        val deckLayout = holder.deckLayout
         if (hasSubdecks) {
-            deckLayout.setPaddingRelative(startPaddingSmall, 0, endPadding, 0)
-            holder.deckExpander.visibility = View.VISIBLE
+            binding.deckLayout.setPaddingRelative(startPaddingSmall, 0, endPadding, 0)
+            binding.deckExpander.isVisible = true
             // Create the correct expander for this deck
-            runBlocking { setDeckExpander(holder.deckExpander, holder.indentView, node) }
+            runBlocking { setDeckExpander(binding.deckExpander, holder.binding.indentView, node) }
         } else {
-            holder.deckExpander.visibility = View.GONE
-            holder.indentView.minimumWidth = 0
-            deckLayout.setPaddingRelative(startPadding, 0, endPadding, 0)
+            binding.deckExpander.isGone = true
+            binding.indentView.minimumWidth = 0
+            binding.deckLayout.setPaddingRelative(startPadding, 0, endPadding, 0)
         }
         if (node.canCollapse) {
-            holder.deckExpander.setOnClickListener {
+            binding.deckExpander.setOnClickListener {
                 onDeckChildrenToggled(node.did)
                 notifyItemChanged(position) // Ensure UI updates
             }
         } else {
-            holder.deckExpander.isClickable = false
-            holder.deckExpander.setOnClickListener(null)
+            binding.deckExpander.isClickable = false
+            binding.deckExpander.setOnClickListener(null)
         }
-        holder.deckLayout.setBackgroundResource(rowCurrentDrawable)
+        holder.binding.deckLayout.setBackgroundResource(rowCurrentDrawable)
         // set a different background color for the current selected deck
         if (node.isSelected) {
-            holder.deckLayout.setBackgroundResource(rowCurrentDrawable)
             if (activityHasBackground) {
-                val background = holder.deckLayout.background.mutate()
+                val background =
+                    holder.binding.deckLayout.background
+                        .mutate()
                 background.alpha = (255 * SELECTED_DECK_ALPHA_AGAINST_BACKGROUND).toInt()
-                holder.deckLayout.background = background
+                holder.binding.deckLayout.background = background
             }
         } else {
-            holder.deckLayout.setBackgroundResource(selectableItemBackground)
+            holder.binding.deckLayout.setBackgroundResource(selectableItemBackground)
         }
         // Set deck name and colour. Filtered decks have their own colour
-        holder.deckName.text = node.lastDeckNameComponent
-        holder.deckName.setTextColor(if (node.filtered) deckNameDynColor else deckNameDefaultColor)
+        binding.deckName.text = node.lastDeckNameComponent
+        binding.deckName.setTextColor(if (node.filtered) deckNameDynColor else deckNameDefaultColor)
 
         // Set the card counts and their colors
-        holder.deckNew.text = node.newCount.toString()
-        holder.deckNew.setTextColor(if (node.newCount == 0) zeroCountColor else newCountColor)
-        holder.deckLearn.text = node.lrnCount.toString()
-        holder.deckLearn.setTextColor(if (node.lrnCount == 0) zeroCountColor else learnCountColor)
-        holder.deckRev.text = node.revCount.toString()
-        holder.deckRev.setTextColor(if (node.revCount == 0) zeroCountColor else reviewCountColor)
+        binding.deckNew.text = node.newCount.toString()
+        binding.deckNew.setTextColor(if (node.newCount == 0) zeroCountColor else newCountColor)
+        binding.deckLearn.text = node.lrnCount.toString()
+        binding.deckLearn.setTextColor(if (node.lrnCount == 0) zeroCountColor else learnCountColor)
+        binding.deckReview.text = node.revCount.toString()
+        binding.deckReview.setTextColor(if (node.revCount == 0) zeroCountColor else reviewCountColor)
 
-        holder.deckLayout.setOnClickListener { onDeckSelected(node.did) }
-        holder.deckLayout.setOnLongClickListener {
+        holder.binding.deckLayout.setOnClickListener { onDeckSelected(node.did) }
+        holder.binding.deckLayout.setOnLongClickListener {
             onDeckContextRequested(node.did)
             true
         }
-        holder.countsLayout.setOnClickListener { onDeckCountsSelected(node.did) }
+        binding.countsLayout.setOnClickListener { onDeckCountsSelected(node.did) }
 
         // Right click listener for right click context menus
-        holder.deckLayout.setOnGenericMotionListener { _, motionEvent ->
+        holder.binding.deckLayout.setOnGenericMotionListener { _, motionEvent ->
             if (motionEvent.action == android.view.MotionEvent.ACTION_BUTTON_PRESS &&
                 motionEvent.buttonState and android.view.MotionEvent.BUTTON_SECONDARY != 0
             ) {
@@ -211,8 +200,12 @@ class DeckAdapter(
         indent: ImageButton,
         node: DisplayDeckNode,
     ) {
+        // Translation moves only the chevron; the deck name keeps its existing layout position.
+        expander.translationX = if (node.depth == 0) 0f else nestedExpanderOffset
+
         // Apply the correct expand/collapse drawable
         if (node.canCollapse) {
+            expander.isVisible = true
             expander.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
             if (node.collapsed) {
                 expander.setImageDrawable(expandImage)
@@ -222,10 +215,12 @@ class DeckAdapter(
                 expander.contentDescription = expander.context.getString(R.string.collapse)
             }
         } else {
-            expander.visibility = View.INVISIBLE
+            // Siblings must perfectly align their text with each other regardless of whether they have children.
+            // Using INVISIBLE instead of GONE maintains the identical 48dp width block that a chevron would take,
+            // ensuring the horizontal L-branch lines reach identically far and the deck text aligns seamlessly.
+            expander.isInvisible = true
             expander.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         }
-        // Add some indenting for each nested level
         indent.minimumWidth = nestedIndent * node.depth
     }
 
@@ -255,7 +250,7 @@ class DeckAdapter(
         reviewCountColor = ta.getColor(3, context.getColor(R.color.black))
         rowCurrentDrawable = ta.getResourceId(4, 0)
         deckNameDefaultColor = ta.getColor(5, context.getColor(R.color.black))
-        deckNameDynColor = ta.getColor(6, context.getColor(R.color.material_blue_A700))
+        deckNameDynColor = ta.getColor(6, context.getColor(CommonR.color.material_blue_A700))
         expandImage = ta.getDrawableOrThrow(7)
         expandImage.isAutoMirrored = true
         collapseImage = ta.getDrawableOrThrow(8)
@@ -278,4 +273,10 @@ private val deckNodeDiffCallback =
             oldItem: DisplayDeckNode,
             newItem: DisplayDeckNode,
         ): Boolean = oldItem == newItem
+
+        // We have to return a non-null payload to prevent cross-fading which resulted in the doubling of the chevron
+        override fun getChangePayload(
+            oldItem: DisplayDeckNode,
+            newItem: DisplayDeckNode,
+        ): Any = true
     }

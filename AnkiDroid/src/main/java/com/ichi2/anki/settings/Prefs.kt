@@ -1,18 +1,6 @@
-/*
- * Copyright (c) 2025 Brayan Oliveira <brayandso.dev@gmail.com>
- *
- * This program is free software; you can redistribute it and/or modify it under
- * the terms of the GNU General Public License as published by the Free Software
- * Foundation; either version 3 of the License, or (at your option) any later
- * version.
- *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY
- * WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
- * PARTICULAR PURPOSE. See the GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along with
- * this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-FileCopyrightText: Copyright (c) 2025 Brayan Oliveira <brayandso.dev@gmail.com>
+
 package com.ichi2.anki.settings
 
 import android.content.Context
@@ -25,10 +13,14 @@ import com.ichi2.anki.AnkiDroidApp
 import com.ichi2.anki.BuildConfig
 import com.ichi2.anki.R
 import com.ichi2.anki.cardviewer.TapGestureMode
+import com.ichi2.anki.common.preferences.AnimationPreferences
+import com.ichi2.anki.common.preferences.sharedPrefs
 import com.ichi2.anki.common.utils.isRunningAsUnitTest
-import com.ichi2.anki.preferences.sharedPrefs
+import com.ichi2.anki.settings.enums.AppTheme
+import com.ichi2.anki.settings.enums.DayTheme
 import com.ichi2.anki.settings.enums.FrameStyle
 import com.ichi2.anki.settings.enums.HideSystemBars
+import com.ichi2.anki.settings.enums.NightTheme
 import com.ichi2.anki.settings.enums.PrefEnum
 import com.ichi2.anki.settings.enums.ShouldFetchMedia
 import com.ichi2.anki.settings.enums.ToolbarPosition
@@ -39,10 +31,13 @@ import kotlin.reflect.KProperty
 //  after the UI classes of that package are moved to `com.ichi2.anki.ui.preferences`
 object Prefs : PrefsRepository(AnkiDroidApp.sharedPrefs(), AnkiDroidApp.appResources)
 
+// TODO: enforce that `preferences.xml` is used
 open class PrefsRepository(
     val sharedPrefs: SharedPreferences,
     private val resources: Resources,
-) {
+) : AnimationPreferences {
+    constructor(context: Context) : this(context.sharedPrefs(), context.resources)
+
     @VisibleForTesting
     fun key(
         @StringRes resId: Int,
@@ -123,23 +118,29 @@ open class PrefsRepository(
 
     @VisibleForTesting
     fun booleanPref(
-        @StringRes keyResId: Int,
+        key: String,
         defaultValue: Boolean,
     ): ReadWriteProperty<Any?, Boolean> =
         object : ReadWriteProperty<Any?, Boolean> {
             override fun getValue(
                 thisRef: Any?,
                 property: KProperty<*>,
-            ): Boolean = getBoolean(keyResId, defaultValue)
+            ): Boolean = sharedPrefs.getBoolean(key, defaultValue)
 
             override fun setValue(
                 thisRef: Any?,
                 property: KProperty<*>,
                 value: Boolean,
             ) {
-                putBoolean(keyResId, value)
+                sharedPrefs.edit { putBoolean(key, value) }
             }
         }
+
+    @VisibleForTesting
+    fun booleanPref(
+        @StringRes keyResId: Int,
+        defaultValue: Boolean,
+    ): ReadWriteProperty<Any?, Boolean> = booleanPref(key(keyResId), defaultValue)
 
     @VisibleForTesting
     fun stringPref(
@@ -244,6 +245,8 @@ open class PrefsRepository(
     val shouldFetchMedia: ShouldFetchMedia
         get() = getEnum(R.string.sync_fetch_media_key, ShouldFetchMedia.ALWAYS)
 
+    var networkTimeoutSecs by intPref(R.string.sync_io_timeout_secs_key, defaultValue = 60)
+
     //region Custom sync server
 
     val customSyncCertificate by stringPref(R.string.custom_sync_certificate_key)
@@ -252,6 +255,15 @@ open class PrefsRepository(
     var isBackgroundEnabled by booleanPref(R.string.pref_deck_picker_background_key, defaultValue = false)
 
     //endregion
+
+    /**
+     * Whether the sync process has requested notification permissions before.
+     * We only want to request notification permissions for the sync feature if the dialog has never been shown
+     * for this reason before.
+     *
+     * @see reminderNotifsRequestShown
+     */
+    var syncNotifsRequestShown by booleanPref(R.string.sync_notifs_request_shown_key, defaultValue = false)
 
     // ************************************** Review Reminders ********************************** //
 
@@ -265,12 +277,83 @@ open class PrefsRepository(
      */
     var reviewReminderNextFreeId by intPref(R.string.review_reminders_next_free_id, defaultValue = 0)
 
+    /**
+     * Whether the review reminder feature has requested notification permissions before.
+     * We only want to request notification permissions for the review reminder feature if the dialog has never been
+     * shown for this reason before.
+     *
+     * @see syncNotifsRequestShown
+     */
+    var reminderNotifsRequestShown by booleanPref(R.string.reminder_notifs_request_shown_key, defaultValue = false)
+
+    /**
+     * A list of all recent deserialization errors that have occurred when trying to load review reminders from storage.
+     * For example, review reminders are deserialized and have their alarms scheduled when the device starts, but
+     * if the deserialization process fails and no valid migrations are available, the error can be put into this string
+     * so that the next time the user opens the app, an error dialog can be shown to inform them of the issue.
+     */
+    var reviewReminderDeserializationErrors by stringPref(R.string.review_reminder_deserialization_errors_key)
+
+    // *************************************** Permissions ************************************** //
+
+    // TODO: "Has the app done X" flags might not belong in the common SharedPrefs file and should maybe be pulled out.
+    // Storing these flags somewhat diverges from the intention of SharedPrefs, which is intended for user preferences.
+    // Cleaner organization / storage of these flags may be possible.
+
+    /**
+     * Whether the bottom sheet for requesting notification permissions has been shown to the user, but only for
+     * API <33. Why is this required? On API 33+, we continue showing the bottom sheet until the OS tells us we should not show it anymore
+     * (i.e. the user has denied the permission and checked "Don't ask again", or has denied the permission enough times).
+     * However, on API <33, no explicit OS notification permission is available, but the user can still disable notifications for the app in the OS settings.
+     * The bottom sheet should therefore still be shown. Since there is no longer OS feedback on whether the user has denied
+     * the request in the past, we need to keep track of this ourselves to avoid spamming the user with the bottom sheet over and over.
+     *
+     * Technically, we could just reuse [notificationsPermissionRequested] for this purpose. However, that makes
+     * [notificationsPermissionRequested] have two purposes and blurs its clear definition as "has the OS system dialog for requesting
+     * notifications been presented to the user before". On API <33, the OS system dialog for requesting notifications does not exist,
+     * and so technically [notificationsPermissionRequested] should always be false. Therefore, we keep this separate.
+     */
+    var notificationsBottomSheetShownBelowAPI33 by booleanPref(R.string.notifications_bottom_sheet_below_33, defaultValue = false)
+
+    // Flags for whether the system UI dialog for requesting certain permissions has been shown before.
+    // If the user has viewed the dialog at least once, we should check if they pressed "don't ask again"
+    // or pressed "deny" repeatedly (via [androidx.core.app.ActivityCompat.shouldShowRequestPermissionRationale]).
+    // This is because trying to show the system dialog again after the user has indicated they don't want to see it
+    // is likely tracked by Play Console statistics and may lead to lower Play Store discoverability.
+    //
+    // @see com.ichi2.anki.ui.windows.permissions.PermissionsFragment.requestPermissionThroughDialogOrSettings
+    // @see com.ichi2.utils.Permissions.isUserOpenToPermission
+
+    /**
+     * Whether the system UI dialog for requesting notification permissions has been shown before.
+     *
+     * Flags like [reminderNotifsRequestShown] etc. are not enough because those flags check if
+     * the BottomSheet dialog explaining the need for notification permissions has been shown before,
+     * whereas this flag checks if the system dialog has been shown before.
+     *
+     * If the user restores their data from a backup or migrates to a new device, this flag may be true
+     * when in reality notification permissions have not been requested for the device. This is most prominently
+     * an issue for the review reminders feature, so to ensure the user is able to receive review reminder notifications after
+     * a data restore / migration, a Snackbar noting that notification permissions are missing will be shown
+     * on the [com.ichi2.anki.reviewreminders.ScheduleRemindersFragment] fragment if notification permissions are not granted.
+     */
+    var notificationsPermissionRequested by booleanPref(R.string.notifications_permission_requested_key, false)
+
+    /**
+     * Whether the system UI dialog for requesting audio recording permissions has been shown before.
+     */
+    var recordAudioPermissionRequested by booleanPref(R.string.record_audio_permission_requested_key, false)
+
+    var internetPermissionRequested by booleanPref(R.string.internet_permission_requested_key, false)
+
     // **************************************** Reviewer **************************************** //
 
     val ignoreDisplayCutout by booleanPref(R.string.ignore_display_cutout_key, false)
     val autoFocusTypeAnswer by booleanPref(R.string.type_in_answer_focus_key, true)
     val showAnswerFeedback by booleanPref(R.string.show_answer_feedback_key, defaultValue = true)
-    val showAnswerButtons by booleanPref(R.string.show_answer_buttons_key, true)
+    var showAnswerButtons by booleanPref(R.string.show_answer_buttons_key, true)
+    val keepScreenOn by booleanPref(R.string.keep_screen_on_preference, defaultValue = false)
+    val hideHardAndEasyButtons by booleanPref(R.string.hide_hard_and_easy_key, defaultValue = false)
 
     val doubleTapInterval by intPref(R.string.double_tap_timeout_pref_key, defaultValue = 200)
     val newStudyScreenAnswerButtonSize by intPref(R.string.answer_button_size_pref_key, defaultValue = 100)
@@ -278,9 +361,17 @@ open class PrefsRepository(
     val swipeSensitivity: Float
         get() = getInt(R.string.pref_swipe_sensitivity_key, 100) / 100F
 
-    val frameStyle: FrameStyle by enumPref(R.string.reviewer_frame_style_key, FrameStyle.CARD)
+    var frameStyle: FrameStyle by enumPref(R.string.reviewer_frame_style_key, FrameStyle.CARD)
     val hideSystemBars: HideSystemBars by enumPref(R.string.hide_system_bars_key, HideSystemBars.NONE)
-    val toolbarPosition: ToolbarPosition by enumPref(R.string.reviewer_toolbar_position_key, ToolbarPosition.TOP)
+    var toolbarPosition: ToolbarPosition by enumPref(R.string.reviewer_toolbar_position_key, ToolbarPosition.TOP)
+
+    //region Appearance
+
+    var appTheme: AppTheme by enumPref(R.string.app_theme_key, AppTheme.FOLLOW_SYSTEM)
+    var dayTheme: DayTheme by enumPref(R.string.day_theme_key, DayTheme.LIGHT)
+    var nightTheme: NightTheme by enumPref(R.string.night_theme_key, NightTheme.BLACK)
+
+    //endregion
 
     // **************************************** Controls **************************************** //
     //region Controls
@@ -297,11 +388,13 @@ open class PrefsRepository(
 
     val answerButtonsSize: Int by intPref(R.string.answer_button_size_preference, 100)
     val cardZoom: Int by intPref(R.string.card_zoom_preference, 100)
+    override val removeAppAnimations by booleanPref(R.string.safe_display_key, defaultValue = false)
 
     // **************************************** Advanced **************************************** //
 
     val isHtmlTypeAnswerEnabled by booleanPref(R.string.use_input_tag_key, defaultValue = false)
     var useFixedPortInReviewer by booleanPref(R.string.use_fixed_port_pref_key, false)
+    var allowTemplatesToRecordAudio by booleanPref(R.string.pref_allow_template_audio_recording, false)
 
     var reviewerPort by intPref(R.string.reviewer_port_pref_key, defaultValue = 0)
 
@@ -311,17 +404,23 @@ open class PrefsRepository(
      * Whether developer options should be shown to the user.
      * True in case [BuildConfig.DEBUG] is true
      * or if the user has enabled it with the secret on [com.ichi2.anki.preferences.AboutFragment]
+     *
+     * @see com.ichi2.anki.preferences.DeveloperOptionsFragment
      */
-    var isDevOptionsEnabled: Boolean
-        get() = getBoolean(R.string.dev_options_enabled_by_user_key, false) || BuildConfig.DEBUG
-        set(value) = putBoolean(R.string.dev_options_enabled_by_user_key, value)
+    var isDeveloperOptionsEnabled: Boolean
+        get() = getBoolean(R.string.developer_options_enabled_by_user_key, false) || BuildConfig.DEBUG
+        set(value) = putBoolean(R.string.developer_options_enabled_by_user_key, value)
 
-    val isNewStudyScreenEnabled by booleanPref(R.string.new_reviewer_options_key, false)
+    var isNewStudyScreenEnabled by booleanPref(R.string.new_reviewer_options_key, false)
 
     val devIsCardBrowserFragmented: Boolean
         get() = getBoolean(R.string.dev_card_browser_fragmented, false)
 
-    val devUsingCardBrowserSearchView: Boolean by booleanPref(R.string.dev_card_browser_search_view, false)
+    val devBottomNavEnabled: Boolean
+        get() = getBoolean(R.string.dev_bottom_nav_key, false)
+
+    @set:VisibleForTesting
+    var devUsingCardBrowserSearchView: Boolean by booleanPref(R.string.dev_card_browser_search_view, false)
 
     val isWebDebugEnabled: Boolean
         get() = (getBoolean(R.string.html_javascript_debugging_key, false) || BuildConfig.DEBUG) && !isRunningAsUnitTest

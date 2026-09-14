@@ -1,18 +1,5 @@
-/*
- Copyright (c) 2020 David Allison <davidallisongithub@gmail.com>
+// SPDX-License-Identifier: GPL-3.0-or-later
 
- This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU General Public License as published by the Free Software
- Foundation; either version 3 of the License, or (at your option) any later
- version.
-
- This program is distributed in the hope that it will be useful, but WITHOUT ANY
- WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
- PARTICULAR PURPOSE. See the GNU General Public License for more details.
-
- You should have received a copy of the GNU General Public License along with
- this program.  If not, see <http://www.gnu.org/licenses/>.
- */
 @file:Suppress("SameParameterValue")
 
 package com.ichi2.anki
@@ -32,18 +19,23 @@ import androidx.test.espresso.matcher.ViewMatchers.isDisplayed
 import androidx.test.espresso.matcher.ViewMatchers.withId
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import anki.config.ConfigKey
-import com.ichi2.anim.ActivityTransitionAnimation.Direction.DEFAULT
 import com.ichi2.anki.NoteEditorTest.FromScreen.DECK_LIST
 import com.ichi2.anki.NoteEditorTest.FromScreen.REVIEWER
 import com.ichi2.anki.api.AddContentApi.Companion.DEFAULT_DECK_ID
 import com.ichi2.anki.common.annotations.DuplicatedCode
+import com.ichi2.anki.common.destinations.NoteEditorDestination
+import com.ichi2.anki.common.destinations.toIntent
+import com.ichi2.anki.common.ui.TransitionDirection.DEFAULT
 import com.ichi2.anki.libanki.Consts
 import com.ichi2.anki.libanki.DeckId
 import com.ichi2.anki.libanki.Decks.Companion.CURRENT_DECK
 import com.ichi2.anki.libanki.Note
 import com.ichi2.anki.libanki.NotetypeJson
+import com.ichi2.anki.libanki.testutils.AnkiTest
 import com.ichi2.anki.model.SelectableDeck
 import com.ichi2.anki.noteeditor.NoteEditorLauncher
+import com.ichi2.anki.noteeditor.getNoteEditorFragment
+import com.ichi2.anki.noteeditor.openNoteEditorWithArgs
 import com.ichi2.testutils.getString
 import kotlinx.coroutines.runBlocking
 import org.hamcrest.MatcherAssert.assertThat
@@ -58,6 +50,7 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -206,7 +199,7 @@ class NoteEditorTest : RobolectricTest() {
     @Test
     fun verifyStartupAndCloseWithNoCollectionDoesNotCrash() {
         enableNullCollection()
-        val intent = NoteEditorLauncher.AddNote().toIntent(targetContext)
+        val intent = NoteEditorDestination.AddNote().toIntent()
         ActivityScenario.launchActivityForResult<NoteEditorActivity>(intent).use { scenario ->
             scenario.onNoteEditor { noteEditor ->
                 noteEditor.requireActivity().onBackPressedDispatcher.onBackPressed()
@@ -219,7 +212,7 @@ class NoteEditorTest : RobolectricTest() {
 
     @Test
     fun testHandleMultimediaActionsDisplaysBottomSheet() {
-        val intent = NoteEditorLauncher.AddNote().toIntent(targetContext)
+        val intent = NoteEditorDestination.AddNote().toIntent()
         ActivityScenario.launchActivityForResult<NoteEditorActivity>(intent).use { scenario ->
             scenario.onNoteEditor { noteEditor ->
                 noteEditor.showMultimediaBottomSheet()
@@ -278,6 +271,47 @@ class NoteEditorTest : RobolectricTest() {
             val actual = editor.currentFieldStrings.toList()
 
             assertThat("newlines should be preserved, second field should be blanked", actual, contains(newFirstField, ""))
+        }
+
+    @Test
+    fun `sticky fields do not impact current values`() =
+        runTest {
+            val basic = col.notetypes.basic
+            val reversed = col.notetypes.basicAndReversed
+
+            reversed.markFieldAsSticky(0)
+
+            withNoteEditorAdding {
+                fields[0] = "foo"
+                fields[1] = "bar"
+
+                setCurrentlySelectedNoteType(reversed.id)
+                setCurrentlySelectedNoteType(basic.id)
+
+                assertThat(fields[0], equalTo("foo"))
+                assertThat(fields[1], equalTo("bar"))
+            }
+        }
+
+    @Test
+    fun `sticky fields are updated per note type`() =
+        runTest {
+            val basic = col.notetypes.basic
+            val reversed = col.notetypes.basicAndReversed
+
+            reversed.markFieldAsSticky(0)
+
+            withNoteEditorAdding {
+                assertFalse(isSticky(0), "first field of basic is not sticky")
+
+                setCurrentlySelectedNoteType(reversed.id)
+
+                assertTrue(isSticky(0), "first field of reversed is not sticky")
+
+                setCurrentlySelectedNoteType(basic.id)
+
+                assertFalse(isSticky(0), "sticky flag is removed")
+            }
         }
 
     @Test
@@ -448,7 +482,7 @@ class NoteEditorTest : RobolectricTest() {
         val activity =
             startActivityNormallyOpenCollectionWithIntent(
                 NoteEditorActivity::class.java,
-                NoteEditorLauncher.AddNote(testDeckId1).toIntent(targetContext),
+                NoteEditorDestination.AddNote(testDeckId1).toIntent(),
             )
         val editor = activity.getNoteEditorFragment()
         val deckNameView = editor.view?.findViewById<TextView>(R.id.note_deck_name)
@@ -527,6 +561,226 @@ class NoteEditorTest : RobolectricTest() {
             assertThat("after: current deck", note.firstCard().did, not(equalTo(homeDeckId)))
         }
 
+    @Test
+    fun `Initial deck respects 'Deck for new cards - Decide by Note Type'`() =
+        runTest {
+            val defaultDeckId = Consts.DEFAULT_DECK_ID
+            val newDeckId = addDeck("New Deck")
+
+            // new cards should decide by note type, not the current deck
+            col.config.setBool(ConfigKey.Bool.ADDING_DEFAULTS_TO_CURRENT_DECK, false)
+            assertThat(col.decks.current().id, equalTo(defaultDeckId))
+
+            // add a note, with a different deck
+            withNoteEditorAdding {
+                fields[0] = "Test"
+                selectDeck(newDeckId)
+                saveNote()
+            }
+
+            // Ensure the displayed deck is updated
+            withNoteEditorAdding {
+                assertThat("Current deck is unchanged", col.decks.current().id, equalTo(defaultDeckId))
+                assertThat("Default deck is updated", this.deckId, equalTo(newDeckId))
+            }
+        }
+
+    @Test
+    fun `Changed note type respects 'Deck for new cards - Decide by Note Type'`() =
+        runTest {
+            val defaultDeckId = Consts.DEFAULT_DECK_ID
+            val deckIdForBasic = addDeck("For Basic")
+            val deckIdForReversed = addDeck("For Reversed")
+
+            // new cards should decide by note type, not the current deck
+            col.config.setBool(ConfigKey.Bool.ADDING_DEFAULTS_TO_CURRENT_DECK, false)
+            assertThat(col.decks.current().id, equalTo(defaultDeckId))
+
+            // add a note to 'Basic'
+            withNoteEditorAdding {
+                fields[0] = "Basic"
+                noteType = col.notetypes.basic
+                selectDeck(deckIdForBasic)
+                saveNote()
+            }
+
+            // add a note to 'Basic and Reversed'
+            withNoteEditorAdding {
+                fields[0] = "Reversed"
+                noteType = col.notetypes.basicAndReversed
+                selectDeck(deckIdForReversed)
+                saveNote()
+            }
+
+            // check the deck changes correctly
+            withNoteEditorAdding {
+                assertThat("using last note type", noteType.name, equalTo(col.notetypes.basicAndReversed.name))
+                assertThat("using associated deck", deckId, equalTo(deckIdForReversed))
+
+                noteType = col.notetypes.basic
+                assertThat("using deck for associated note type", deckId, equalTo(deckIdForBasic))
+            }
+        }
+
+    @Test
+    fun `hasUnsavedChanges - note is unchanged`() =
+        withNoteEditorEditing(addBasicNote("hello world")) {
+            this.setField(0, "hello world")
+            assertFalse(hasUnsavedChanges())
+        }
+
+    @Test
+    fun `hasUnsavedChanges - note is changed`() =
+        withNoteEditorEditing(addBasicNote("hello world")) {
+            this.setField(0, "hi")
+            assertTrue(hasUnsavedChanges())
+        }
+
+    @Test
+    fun `hasUnsavedChanges - note contained a newline`() =
+        withNoteEditorEditing(addBasicNote("hello\nworld")) {
+            assertFalse(hasUnsavedChanges())
+        }
+
+    @Test
+    fun `hasUnsavedChanges - note contained a HTML newline - 20174`() =
+        withNoteEditorEditing(addBasicNote("hello<br>world")) {
+            assertFalse(hasUnsavedChanges())
+        }
+
+    @Test
+    fun `hasUnsavedChanges - note contained a legacy HTML newline`() =
+        withNoteEditorEditing(addBasicNote("hello<br />world")) {
+            assertFalse(hasUnsavedChanges())
+        }
+
+    @Test
+    fun `hasUnsavedChanges - sticky field content alone is not an unsaved change`() =
+        runTest {
+            val basic = makeNoteForType(NoteType.BASIC)
+            basic!!.fields[0].sticky = true
+
+            val editor =
+                getNoteEditorAdding(NoteType.BASIC)
+                    .withFirstField("Hello")
+                    .withSecondField("World")
+                    .build()
+
+            editor.saveNote()
+            advanceRobolectricLooper()
+
+            // sticky field 0 carries "Hello" into the next note; nothing has actually been edited yet
+            assertThat(editor.currentFieldStrings.toList(), contains("Hello", ""))
+            assertFalse(editor.hasUnsavedChanges(), "fresh screen after save: no real edits yet")
+
+            // user types into the non-sticky field, then reverts their own edit
+            editor.setFieldValueFromUi(1, "x")
+            editor.setFieldValueFromUi(1, "")
+
+            assertFalse(
+                editor.hasUnsavedChanges(),
+                "user's only edit was reverted; only the sticky field remains populated - should not count as unsaved",
+            )
+        }
+
+    @Test
+    fun `changing deck with multiple card ids moves all sibling cards`() =
+        runTest {
+            // Create a note with 2 cards (Basic and Reversed)
+            val note = addBasicAndReversedNote()
+
+            val cardIds: List<Long> = note.cardIds(col)
+            val testDeckId: Long = addDeck("Test Deck")
+
+            // Launch Editor using the Launcher bundle (mimic launch from browser)
+            val bundle =
+                NoteEditorLauncher
+                    .EditSelection(
+                        cardIds = cardIds,
+                        animation = DEFAULT,
+                    ).toBundle()
+
+            val editor = openNoteEditorWithArgs(bundle)
+
+            // Change the note's deck to test deck and save
+            editor.onDeckSelected(SelectableDeck.Deck(testDeckId, "Test Deck"))
+            editor.saveNote()
+
+            advanceRobolectricLooper()
+
+            // Check if both cards belonging to the note have moved to the test deck
+            assertEquals(testDeckId, col.getCard(cardIds[0]).did, "First card should be in the test deck")
+            assertEquals(testDeckId, col.getCard(cardIds[1]).did, "Second card should also be in the test deck")
+        }
+
+    @Test
+    fun `changing deck with single card id moves only that card`() =
+        runTest {
+            // Create a note with 2 cards (Basic and Reversed)
+            val note = addBasicAndReversedNote()
+
+            val cardIds: List<Long> = note.cardIds(col)
+            val initialDeckId = col.getCard(cardIds[1]).did
+            val newDeckId: Long = addDeck("Test Deck")
+
+            // Launch Editor using the Launcher bundle with a single card id
+            val bundle =
+                NoteEditorLauncher
+                    .EditSelection(
+                        cardIds = listOf(cardIds[0]),
+                        animation = DEFAULT,
+                    ).toBundle()
+
+            val editor = openNoteEditorWithArgs(bundle)
+
+            // Change the card's deck to test deck and save
+            editor.onDeckSelected(SelectableDeck.Deck(newDeckId, "Test Deck"))
+            editor.saveNote()
+            advanceRobolectricLooper()
+
+            // Check whether sibling cards are unaffected and only the target card has moved to the test deck
+            assertEquals(newDeckId, col.getCard(cardIds[0]).did, "Selected card should move")
+            assertEquals(initialDeckId, col.getCard(cardIds[1]).did, "Sibling card should NOT move")
+        }
+
+    @Test
+    fun `saveToggleStickyMap removes keys beyond current field count - 13719`() {
+        val editor = getNoteEditorAddingNote(DECK_LIST)
+        advanceRobolectricLooper()
+
+        val editFields = List(2) { index -> editor.getFieldForTest(index) }
+        editor.editFields!!.clear()
+        editor.editFields!!.addAll(editFields)
+        editor.toggleStickyText.putAll(
+            mapOf(
+                0 to "value0",
+                1 to "value1",
+                2 to "value2",
+            ),
+        )
+
+        editor.saveToggleStickyMap()
+
+        assertFalse(editor.toggleStickyText.containsKey(2), "key 2 should be removed when editFields has only 2 elements")
+        assertTrue(editor.toggleStickyText.containsKey(0), "key 0 should remain")
+        assertTrue(editor.toggleStickyText.containsKey(1), "key 1 should remain")
+    }
+
+    private suspend fun withNoteEditorAdding(
+        from: FromScreen = FromScreen.DECK_LIST,
+        block: suspend NoteEditorFragment.() -> Unit,
+    ) {
+        val editor = getNoteEditorAddingNote(from)
+        editor.block()
+    }
+
+    private fun withNoteEditorEditing(
+        note: Note,
+        block: suspend NoteEditorFragment.() -> Unit,
+    ) = runTest {
+        block(getNoteEditorEditingExistingBasicNote(note, from = REVIEWER))
+    }
+
     private fun moveToDynamicDeck(note: Note): DeckId {
         val dyn = addDynamicDeck("All")
         col.decks.select(dyn)
@@ -572,11 +826,11 @@ class NoteEditorTest : RobolectricTest() {
             NoteType.BASIC -> col.notetypes.byName("Basic")
             NoteType.CLOZE -> col.notetypes.byName("Cloze")
             NoteType.BACK_TO_FRONT -> {
-                val name = super.addStandardNoteType("Reversed", arrayOf("Front", "Back"), "{{Back}}", "{{Front}}")
+                val name = addStandardNoteType("Reversed", arrayOf("Front", "Back"), "{{Back}}", "{{Front}}")
                 col.notetypes.byName(name)
             }
             NoteType.THREE_FIELD_INVALID_TEMPLATE -> {
-                val name = super.addStandardNoteType("Invalid", arrayOf("Front", "Back", "Side"), "", "")
+                val name = addStandardNoteType("Invalid", arrayOf("Front", "Back", "Side"), "", "")
                 col.notetypes.byName(name)
             }
             NoteType.IMAGE_OCCLUSION -> col.notetypes.byName("Image Occlusion")
@@ -586,8 +840,8 @@ class NoteEditorTest : RobolectricTest() {
         ensureCollectionLoadIsSynchronous()
         val bundle =
             when (from) {
-                REVIEWER -> NoteEditorLauncher.AddNoteFromReviewer().toBundle()
-                DECK_LIST -> NoteEditorLauncher.AddNote().toBundle()
+                REVIEWER -> NoteEditorDestination.AddNoteFromReviewer().toIntent().extras!!
+                DECK_LIST -> NoteEditorFragment.addNoteArgs()
             }
         return openNoteEditorWithArgs(bundle)
     }
@@ -607,22 +861,10 @@ class NoteEditorTest : RobolectricTest() {
     ): NoteEditorFragment {
         val bundle =
             when (from) {
-                REVIEWER -> NoteEditorLauncher.EditCard(n.firstCard().id, DEFAULT).toBundle()
-                DECK_LIST -> NoteEditorLauncher.AddNote().toBundle()
+                REVIEWER -> NoteEditorLauncher.EditSelection(listOf(n.firstCard().id), DEFAULT).toBundle()
+                DECK_LIST -> NoteEditorFragment.addNoteArgs()
             }
         return openNoteEditorWithArgs(bundle)
-    }
-
-    fun openNoteEditorWithArgs(
-        arguments: Bundle,
-        action: String? = null,
-    ): NoteEditorFragment {
-        val activity =
-            startActivityNormallyOpenCollectionWithIntent(
-                NoteEditorActivity::class.java,
-                NoteEditorLauncher.PassArguments(arguments).toIntent(targetContext, action),
-            )
-        return activity.getNoteEditorFragment()
     }
 
     @DuplicatedCode("NoteEditor in androidTest")
@@ -639,10 +881,6 @@ class NoteEditorTest : RobolectricTest() {
         }
         wrapped.get()?.let { throw it }
     }
-
-    @DuplicatedCode("NoteEditor in androidTest")
-    fun NoteEditorActivity.getNoteEditorFragment(): NoteEditorFragment =
-        supportFragmentManager.findFragmentById(R.id.note_editor_fragment_frame) as NoteEditorFragment
 
     private enum class FromScreen {
         DECK_LIST,
@@ -710,4 +948,61 @@ class NoteEditorTest : RobolectricTest() {
             this.notetype = notetype
         }
     }
+}
+
+/**
+ * Boilerplate to support `NoteEditor.fields[0] = "foo"`
+ */
+private class NoteEditorFieldAccessor(
+    val editor: NoteEditorFragment,
+) {
+    operator fun get(index: Int): String = editor.getFieldForTest(index).fieldText!!
+
+    operator fun set(
+        index: Int,
+        value: String,
+    ) {
+        editor.setFieldValueFromUi(index, value)
+    }
+}
+
+private val NoteEditorFragment.fields: NoteEditorFieldAccessor
+    get() = NoteEditorFieldAccessor(this)
+
+private fun NoteEditorFragment.isSticky(index: Int) = this.toggleStickyText.containsKey(index)
+
+private var NoteEditorFragment.noteType: NotetypeJson
+    get() = editorNote!!.notetype
+    set(value) = this.setCurrentlySelectedNoteType(value.id)
+
+/** Select a deck by Id */
+context(testContext: AnkiTest)
+private fun NoteEditorFragment.selectDeck(deckId: DeckId) {
+    val name = testContext.col.decks.name(deckId)
+    onDeckSelected(SelectableDeck.Deck(deckId, name))
+}
+
+/** sets a note type as sticky */
+context(testContext: AnkiTest)
+private fun NotetypeJson.markFieldAsSticky(index: Int) =
+    update {
+        fields[index].sticky = true
+    }
+
+/**
+ * Updates the provided note type, without affecting the currently selected note type
+ */
+context(testContext: AnkiTest)
+private fun NotetypeJson.update(block: NotetypeJson.() -> Unit) {
+    val notetypes = testContext.col.notetypes
+    val currentNoteType = notetypes.current()
+
+    // apply the updates
+    block(this)
+
+    // persist the updates
+    notetypes.update(this)
+
+    // ensure the current note type was unchanged
+    notetypes.setCurrent(currentNoteType)
 }

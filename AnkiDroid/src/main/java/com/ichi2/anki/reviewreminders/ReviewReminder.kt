@@ -1,18 +1,5 @@
-/*
- *  Copyright (c) 2025 Eric Li <ericli3690@gmail.com>
- *
- *  This program is free software; you can redistribute it and/or modify it under
- *  the terms of the GNU General Public License as published by the Free Software
- *  Foundation; either version 3 of the License, or (at your option) any later
- *  version.
- *
- *  This program is distributed in the hope that it will be useful, but WITHOUT ANY
- *  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
- *  PARTICULAR PURPOSE. See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with
- *  this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-FileCopyrightText: Copyright (c) 2025 Eric Li <ericli3690@gmail.com>
 
 package com.ichi2.anki.reviewreminders
 
@@ -22,6 +9,7 @@ import android.text.format.DateFormat
 import com.ichi2.anki.CollectionManager.withCol
 import com.ichi2.anki.common.time.TimeManager
 import com.ichi2.anki.libanki.DeckId
+import com.ichi2.anki.libanki.EpochMilliseconds
 import com.ichi2.anki.settings.Prefs
 import kotlinx.parcelize.IgnoredOnParcel
 import kotlinx.parcelize.Parcelize
@@ -110,11 +98,11 @@ value class ReviewReminderCardTriggerThreshold(
 
 /**
  * An indicator of whether a review reminders feature is associated with every deck in the user's
- * collection or if it is associated with a single deck. For example, the [ScheduleReminders] fragment
+ * collection or if it is associated with a single deck. For example, the [ScheduleRemindersFragment] fragment
  * can be triggered in either global or deck-specific editing mode. A [ReviewReminder] can be associated
  * with either all decks or a specific deck.
  *
- * This class is marked with @Parcelize so that it can be passed into [ScheduleReminders.getIntent].
+ * This class is marked with @Parcelize so that it can be passed into [ScheduleRemindersFragment.getIntent].
  * This class is marked with @Serializable so that it can be a field of [ReviewReminder]s, which are stored as JSON strings.
  */
 @Serializable
@@ -160,6 +148,9 @@ sealed class ReviewReminderScope : Parcelable {
  * reminders with invalid IDs are never created. This class is annotated
  * with @ConsistentCopyVisibility to ensure copy() is private too and does not leak the constructor.
  *
+ * Edits to instances of this class are not automatically persisted to SharedPreferences;
+ * that functionality is provided by [ReviewRemindersDatabase].
+ *
  * About the old schema migration process:
  *
  * To any developer who changes this class in the future, note that these review reminders are stored
@@ -178,8 +169,6 @@ sealed class ReviewReminderScope : Parcelable {
  * Preferably, also add some unit tests to ensure your migration works properly on all user devices once your update is rolled out.
  * See ReviewRemindersDatabaseTest for examples on how to do this.
  *
- * TODO: add remaining fields planned for GSoC 2025.
- *
  * @param id Unique, auto-incremented ID of the review reminder.
  * @param time See [ReviewReminderTime].
  * @param cardTriggerThreshold See [ReviewReminderCardTriggerThreshold].
@@ -187,6 +176,10 @@ sealed class ReviewReminderScope : Parcelable {
  * @param enabled Whether the review reminder's notifications are active or disabled.
  * @param profileID ID representing the profile which created this review reminder, as review reminders for
  * multiple profiles might be active simultaneously.
+ * @param latestNotifTime The time at which this review reminder last attempted to fire a routine daily (non-snooze)
+ * notification, in epoch milliseconds, or the time at which it was created if no notification has ever been fired.
+ * See [latestNotifDelivered].
+ * @param onlyNotifyIfNoReviews If true, only notify the user if this scope has not been reviewed today yet.
  */
 @Serializable
 @Parcelize
@@ -197,7 +190,9 @@ data class ReviewReminder private constructor(
     val cardTriggerThreshold: ReviewReminderCardTriggerThreshold,
     val scope: ReviewReminderScope,
     var enabled: Boolean,
+    var latestNotifTime: EpochMilliseconds,
     val profileID: String,
+    val onlyNotifyIfNoReviews: Boolean,
 ) : Parcelable,
     ReviewReminderSchema {
     companion object {
@@ -208,18 +203,50 @@ data class ReviewReminder private constructor(
          */
         fun createReviewReminder(
             time: ReviewReminderTime,
-            cardTriggerThreshold: ReviewReminderCardTriggerThreshold,
+            cardTriggerThreshold: ReviewReminderCardTriggerThreshold = ReviewReminderCardTriggerThreshold(0),
             scope: ReviewReminderScope = ReviewReminderScope.Global,
             enabled: Boolean = true,
             profileID: String = "",
+            onlyNotifyIfNoReviews: Boolean = false,
         ) = ReviewReminder(
             id = ReviewReminderId.getAndIncrementNextFreeReminderId(),
             time,
             cardTriggerThreshold,
             scope,
             enabled,
+            latestNotifTime = TimeManager.time.calendar().timeInMillis,
             profileID,
+            onlyNotifyIfNoReviews,
         )
+    }
+
+    /**
+     * Updates [latestNotifTime] to the current time.
+     * This should be called whenever this review reminder attempts to fire a routine daily (non-snooze) notification.
+     */
+    fun updateLatestNotifTime() {
+        latestNotifTime = TimeManager.time.calendar().timeInMillis
+    }
+
+    /**
+     * Checks if this review reminder has successfully attempted to deliver a routine daily (non-snooze)
+     * notification in the time between its latest scheduled firing time and now. If so, this method returns true.
+     */
+    fun latestNotifDelivered(): Boolean {
+        val (hour, minute) = this.time
+
+        val currentTimestamp = TimeManager.time.calendar()
+        val latestScheduledTimestamp = currentTimestamp.clone() as Calendar
+        latestScheduledTimestamp.apply {
+            set(Calendar.HOUR_OF_DAY, hour)
+            set(Calendar.MINUTE, minute)
+            set(Calendar.SECOND, 0)
+            if (after(currentTimestamp)) {
+                add(Calendar.DAY_OF_YEAR, -1)
+            }
+        }
+
+        return latestNotifTime >= latestScheduledTimestamp.timeInMillis
     }
 
     /**

@@ -1,18 +1,5 @@
-/*
- *  Copyright (c) 2025 Eric Li <ericli3690@gmail.com>
- *
- *  This program is free software; you can redistribute it and/or modify it under
- *  the terms of the GNU General Public License as published by the Free Software
- *  Foundation; either version 3 of the License, or (at your option) any later
- *  version.
- *
- *  This program is distributed in the hope that it will be useful, but WITHOUT ANY
- *  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
- *  PARTICULAR PURPOSE. See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with
- *  this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-FileCopyrightText: Copyright (c) 2025 Eric Li <ericli3690@gmail.com>
 
 package com.ichi2.anki.ui.windows.permissions
 
@@ -23,7 +10,14 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
 import androidx.core.view.isVisible
 import com.ichi2.anki.R
+import com.ichi2.anki.common.permissions.LEGACY_POST_NOTIFICATIONS
+import com.ichi2.anki.databinding.FragmentAllPermissionsExplanationBinding
+import com.ichi2.anki.settings.Prefs
 import com.ichi2.utils.Permissions
+import com.ichi2.utils.Permissions.notificationsPermission
+import com.ichi2.utils.Permissions.requestPermissionThroughDialogOrSettings
+import com.ichi2.utils.Permissions.showToastAndOpenAppSettingsScreenForPermission
+import dev.androidbroadcast.vbpd.viewBinding
 import timber.log.Timber
 
 /**
@@ -34,7 +28,9 @@ import timber.log.Timber
  * See [the docs](https://developer.android.com/training/permissions/explaining-access#privacy-dashboard).
  */
 @RequiresApi(Build.VERSION_CODES.S)
-class AllPermissionsExplanationFragment : PermissionsFragment(R.layout.all_permissions_explanation_fragment) {
+class AllPermissionsExplanationFragment : PermissionsFragment(R.layout.fragment_all_permissions_explanation) {
+    private val binding by viewBinding(FragmentAllPermissionsExplanationBinding::bind)
+
     /**
      * Attempts to open the dialog for granting permissions. Falls back to opening the OS settings if the dialog fails to
      * show up or if the permissions are rejected by the user. The dialog may fail to show up if the user has previously denied the
@@ -42,13 +38,8 @@ class AllPermissionsExplanationFragment : PermissionsFragment(R.layout.all_permi
      */
     private val permissionRequestLauncher =
         registerForActivityResult(
-            ActivityResultContracts.RequestMultiplePermissions(),
-        ) { requestedPermissions ->
-            Timber.i("Permission result: $requestedPermissions")
-            if (!requestedPermissions.all { it.value }) {
-                showToastAndOpenAppSettingsScreen(R.string.manually_grant_permissions)
-            }
-        }
+            ActivityResultContracts.RequestPermission(),
+        ) { isGranted -> Timber.i("Permission result: $isGranted") }
 
     /**
      * Activity launcher for the external storage management permission.
@@ -64,32 +55,49 @@ class AllPermissionsExplanationFragment : PermissionsFragment(R.layout.all_permi
     ) {
         super.onViewCreated(view, savedInstanceState)
 
-        val externalStoragePermission = view.findViewById<PermissionsItem>(R.id.manage_external_storage_permission_item)
-        val notificationPermission = view.findViewById<PermissionsItem>(R.id.post_notification_permission_item)
-        val recordAudioPermission = view.findViewById<PermissionsItem>(R.id.record_audio_permission_item)
-
         val shouldRequestExternalStorage = Permissions.canManageExternalStorage(requireContext())
         if (shouldRequestExternalStorage) {
-            externalStoragePermission.apply {
+            binding.manageExternalStoragePermissionItem.apply {
                 isVisible = true
                 requestExternalStorageOnClick(accessAllFilesLauncher)
             }
         }
-        view.findViewById<View>(R.id.heading_required_permissions).isVisible = shouldRequestExternalStorage
+        binding.headingRequiredPermissions.isVisible = shouldRequestExternalStorage
 
-        Permissions.postNotification?.let {
-            notificationPermission.apply {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            binding.postNotificationPermissionItem.apply {
                 isVisible = true
-                offerToGrantOrRevokeOnClick(permissionRequestLauncher, arrayOf(it))
+                // If it's already granted, offer to revoke it on click; otherwise, request it
+                revokeIfGrantedOnClickElse {
+                    requestPermissionThroughDialogOrSettings(
+                        activity = requireActivity(),
+                        permission = notificationsPermission,
+                        permissionRequestedFlag = Prefs::notificationsPermissionRequested,
+                        permissionRequestLauncher = permissionRequestLauncher,
+                    )
+                }
+            }
+        } else {
+            binding.legacyPostNotificationPermissionItem.apply {
+                isVisible = true
+                // If it's already granted, offer to revoke it on click; otherwise, request it
+                revokeIfGrantedOnClickElse {
+                    showToastAndOpenAppSettingsScreenForPermission(LEGACY_POST_NOTIFICATIONS, R.string.manually_grant_permissions)
+                }
             }
         }
 
-        recordAudioPermission.apply {
+        binding.recordAudioPermissionItem.apply {
             isVisible = true
-            offerToGrantOrRevokeOnClick(
-                permissionRequestLauncher,
-                arrayOf(Permissions.recordAudioPermission),
-            )
+            // If it's already granted, offer to revoke it on click; otherwise, request it
+            revokeIfGrantedOnClickElse {
+                requestPermissionThroughDialogOrSettings(
+                    activity = requireActivity(),
+                    permission = Permissions.RECORD_AUDIO_PERMISSION,
+                    permissionRequestedFlag = Prefs::recordAudioPermissionRequested,
+                    permissionRequestLauncher = permissionRequestLauncher,
+                )
+            }
         }
     }
 }

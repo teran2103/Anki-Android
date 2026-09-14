@@ -42,7 +42,7 @@ import com.ichi2.anki.libanki.backend.BackendUtils
 import com.ichi2.anki.libanki.backend.BackendUtils.fromJsonBytes
 import com.ichi2.anki.libanki.backend.BackendUtils.toJsonBytes
 import com.ichi2.anki.libanki.utils.LibAnkiAlias
-import com.ichi2.anki.libanki.utils.NotInLibAnki
+import com.ichi2.anki.libanki.utils.NotInPyLib
 import com.ichi2.anki.libanki.utils.append
 import com.ichi2.anki.libanki.utils.deepClone
 import com.ichi2.anki.libanki.utils.len
@@ -142,7 +142,7 @@ class Decks(
         return out.id
     }
 
-    @NotInLibAnki
+    @NotInPyLib
     fun id(
         name: String,
         type: DeckConfigId = 0L,
@@ -564,17 +564,15 @@ class Decks(
         }
     }
 
-    /** Select a new branch (deck and descendants). */
+    /**
+     * Select a new branch (deck and descendants).
+     *
+     * @see setCurrent includes `undoableOp` support - use for UI code.
+     */
     @LibAnkiAlias("select")
-    @RustCleanup("does not match upstream")
+    @Suppress("CheckResult")
     fun select(did: DeckId) {
-        col.backend.setCurrentDeck(did)
-        val selectedDeckName = name(did)
-        val childrenDids =
-            allNamesAndIds(skipEmptyDefault = true, includeFiltered = false)
-                .filter { it.name.startsWith("$selectedDeckName::") }
-                .map { it.id }
-        col.config.set(ACTIVE_DECKS, listOf(did) + childrenDids)
+        setCurrent(did)
     }
 
     /** @return The currently selected deck ID. */
@@ -686,7 +684,7 @@ class Decks(
      */
 
     /** @return the fully qualified name of the subdeck, or null if unavailable */
-    @NotInLibAnki
+    @NotInPyLib
     @CheckResult
     fun getSubdeckName(
         did: DeckId,
@@ -703,16 +701,16 @@ class Decks(
         return deck.getString("name") + DECK_SEPARATOR + subdeckName
     }
 
-    @NotInLibAnki
+    @NotInPyLib
     fun cardCount(did: DeckId): Int = col.db.queryScalar("SELECT count() FROM cards WHERE did = ? ", did)
 
-    @NotInLibAnki
+    @NotInPyLib
     fun isEmpty(did: DeckId): Boolean = cardCount(did) == 0
 
     /**
      * Retrieve the 'Default' deck which is always available.
      */
-    @NotInLibAnki
+    @NotInPyLib
     fun getDefault(): Deck = getLegacy(Consts.DEFAULT_DECK_ID)!!
 
     companion object {
@@ -740,13 +738,10 @@ class Decks(
         /** Configuration saving the current deck  */
         const val CURRENT_DECK = "curDeck"
 
-        /** Configuration saving the set of active decks (i.e. current decks and its descendants)  */
-        const val ACTIVE_DECKS = "activeDecks"
-
-        @NotInLibAnki
+        @NotInPyLib
         const val DECK_SEPARATOR = "::"
 
-        @NotInLibAnki
+        @NotInPyLib
         fun isValidDeckName(deckName: String): Boolean = deckName.trim().isNotEmpty()
     }
 }

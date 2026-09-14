@@ -1,17 +1,6 @@
-//noinspection MissingCopyrightHeader #8659
-// Copyright 2015 Google Inc. All Rights Reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright 2015 Google Inc. All Rights Reserved.
+
 package com.ichi2.compat.customtabs
 
 import android.app.Activity
@@ -25,6 +14,7 @@ import androidx.browser.customtabs.CustomTabsIntent
 import androidx.browser.customtabs.CustomTabsServiceConnection
 import androidx.browser.customtabs.CustomTabsSession
 import com.ichi2.anki.R
+import com.ichi2.anki.common.crashreporting.CrashReportService
 import com.ichi2.anki.snackbar.showSnackbar
 import timber.log.Timber
 
@@ -69,12 +59,17 @@ class CustomTabActivityHelper : ServiceConnectionCallback {
      */
     fun bindCustomTabsService(activity: Activity) {
         if (client != null) return
-        val packageName = CustomTabsHelper.getPackageNameToUse(activity) ?: return
-        connection = ServiceConnection(this)
         try {
+            val packageName = CustomTabsHelper.getPackageNameToUse(activity) ?: return
+            connection = ServiceConnection(this)
             CustomTabsClient.bindCustomTabsService(activity, packageName, connection!!)
         } catch (e: SecurityException) {
             Timber.w(e, "CustomTabsService bind attempt failed, using fallback")
+            CrashReportService.sendExceptionReport(
+                e = e,
+                origin = "bindCustomTabsService",
+                onlyIfSilent = true,
+            )
             disableCustomTabHandler()
         }
     }
@@ -112,10 +107,17 @@ class CustomTabActivityHelper : ServiceConnectionCallback {
                 Timber.w(e, "Ignoring CustomTabs implementation that doesn't conform to Android 8 background limits")
             }
             session
-        } catch (e: SecurityException) {
+        } catch (e: RuntimeException) {
             // #6142 - A securityException here means that we're not able to load the CustomTabClient at all, whereas
             // the IllegalStateException was a failure, but could be continued from
             Timber.w(e, "CustomTabsService bind attempt failed, using fallback")
+            CrashReportService.sendExceptionReport(
+                e = e,
+                origin = "CustomTabActivityHelper::onServiceConnected",
+                onlyIfSilent = true,
+            )
+            // TODO: https://github.com/ankidroid/Anki-Android/issues/21708
+            // Edge throws on a cold bind. Retry in the future instead of disabling the feature
             disableCustomTabHandler()
         }
     }

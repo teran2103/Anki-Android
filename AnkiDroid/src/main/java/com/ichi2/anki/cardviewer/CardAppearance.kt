@@ -1,24 +1,12 @@
-/*
- *  Copyright (c) 2020 David Allison <davidallisongithub@gmail.com>
- *
- *  This program is free software; you can redistribute it and/or modify it under
- *  the terms of the GNU General Public License as published by the Free Software
- *  Foundation; either version 3 of the License, or (at your option) any later
- *  version.
- *
- *  This program is distributed in the hope that it will be useful, but WITHOUT ANY
- *  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
- *  PARTICULAR PURPOSE. See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with
- *  this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package com.ichi2.anki.cardviewer
 
 import android.content.SharedPreferences
 import androidx.annotation.CheckResult
 import com.ichi2.anki.reviewer.ReviewerCustomFonts
-import com.ichi2.themes.Theme
+import com.ichi2.anki.settings.enums.DayTheme
+import com.ichi2.anki.settings.enums.NightTheme
 import com.ichi2.themes.Themes.currentTheme
 
 /** Responsible for calculating CSS and element styles and modifying content on a flashcard  */
@@ -47,17 +35,17 @@ class CardAppearance(
         if (centerVertically) {
             cardClass.append(" vertically_centered")
         }
-        if (currentTheme.isNightMode) {
+        if (currentTheme is NightTheme) {
             // Enable the night-mode class
             cardClass.append(" night_mode nightMode")
 
             // Emit the dark_mode selector to allow dark theme overrides
-            if (currentTheme == Theme.DARK) {
+            if (currentTheme == NightTheme.DARK) {
                 cardClass.append(" ankidroid_dark_mode")
             }
         } else {
             // Emit the plain_mode selector to allow plain theme overrides
-            if (currentTheme == Theme.PLAIN) {
+            if (currentTheme == DayTheme.PLAIN) {
                 cardClass.append(" ankidroid_plain_mode")
             }
         }

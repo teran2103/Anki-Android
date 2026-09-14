@@ -1,18 +1,6 @@
-/*
- *  Copyright (c) 2022 Brayan Oliveira <brayandso.dev@gmail.com>
- *
- *  This program is free software; you can redistribute it and/or modify it under
- *  the terms of the GNU General Public License as published by the Free Software
- *  Foundation; either version 3 of the License, or (at your option) any later
- *  version.
- *
- *  This program is distributed in the hope that it will be useful, but WITHOUT ANY
- *  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
- *  PARTICULAR PURPOSE. See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with
- *  this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-FileCopyrightText: Copyright (c) 2022 Brayan Oliveira <brayandso.dev@gmail.com>
+
 package com.ichi2.anki.pages
 
 import android.content.Context
@@ -25,19 +13,21 @@ import android.webkit.WebView
 import androidx.activity.OnBackPressedCallback
 import androidx.core.view.isVisible
 import androidx.fragment.app.FragmentActivity
+import anki.collection.ComputeParamsProgress
 import anki.collection.OpChanges
-import anki.collection.Progress
+import com.google.android.material.appbar.MaterialToolbar
 import com.ichi2.anki.CollectionManager.TR
 import com.ichi2.anki.CollectionManager.withCol
-import com.ichi2.anki.CrashReportService
 import com.ichi2.anki.ProgressContext
 import com.ichi2.anki.R
 import com.ichi2.anki.SingleFragmentActivity
 import com.ichi2.anki.common.annotations.NeedsTest
+import com.ichi2.anki.common.crashreporting.CrashReportService
 import com.ichi2.anki.launchCatchingTask
 import com.ichi2.anki.libanki.DeckId
 import com.ichi2.anki.libanki.updateDeckConfigsRaw
 import com.ichi2.anki.observability.undoableOp
+import com.ichi2.anki.settings.Prefs
 import com.ichi2.anki.utils.openUrl
 import com.ichi2.anki.withProgress
 import kotlinx.coroutines.Dispatchers
@@ -47,6 +37,12 @@ import timber.log.Timber
 @NeedsTest("15130: pressing back: icon + button should return to options if the manual is open")
 @NeedsTest("17905: pressing back before the webpage is ready closes the screen")
 class DeckOptions : PageFragment() {
+    private val deckId: DeckId by lazy { requireArguments().getLong(KEY_DECK_ID) }
+
+    override val pagePath: String by lazy {
+        val deckId = requireArguments().getLong(KEY_DECK_ID)
+        "deck-options/$deckId"
+    }
     private var webViewIsReady = false
 
     /**
@@ -120,8 +116,7 @@ class DeckOptions : PageFragment() {
                         document.getElementsByClassName("modal show")[0]
                         .getElementsByClassName("btn-close")[0].click()
                         """.trimIndent(),
-                        {},
-                    )
+                    ) {}
                 } catch (e: Exception) {
                     CrashReportService.sendExceptionReport(e, "DeckOptions:onCloseBootstrapModalCallback")
                 } finally {
@@ -158,6 +153,10 @@ class DeckOptions : PageFragment() {
     ) {
         pageLoadingIndicator.isVisible = true
         super.onViewCreated(view, savedInstanceState)
+        launchCatchingTask {
+            val deckName = withCol { decks.name(deckId, default = true) }
+            view.findViewById<MaterialToolbar>(R.id.toolbar).title = deckName
+        }
     }
 
     override fun onWebViewCreated() {
@@ -174,7 +173,7 @@ class DeckOptions : PageFragment() {
         activity?.onBackPressedDispatcher?.addCallback(this, onBackFromManual)
 
         return object : PageWebViewClient() {
-            private val ankiManualHostRegex = Regex("^docs\\.ankiweb\\.net\$")
+            private val ankiManualHostRegex = Regex("^docs\\.ankiweb\\.net$")
 
             /** @see onWebViewReady */
             override fun onShowWebView(webView: WebView) {
@@ -228,8 +227,8 @@ class DeckOptions : PageFragment() {
         val openJs = getListenerJs("shown.bs.modal", "open")
         val closeJs = getListenerJs("hidden.bs.modal", "close")
 
-        webViewLayout.evaluateJavascript(openJs, {})
-        webViewLayout.evaluateJavascript(closeJs, {})
+        webViewLayout.evaluateJavascript(openJs) {}
+        webViewLayout.evaluateJavascript(closeJs) {}
     }
 
     fun onWebViewReady() {
@@ -237,16 +236,57 @@ class DeckOptions : PageFragment() {
         webViewIsReady = true
         webViewLayout.isVisible = true
         pageLoadingIndicator.isVisible = false
+        setParameterUnlockClickTimeout()
+    }
+
+    /**
+     * The FSRS parameters are locked until they are tapped three times in quick succession.
+     *
+     * Use [Prefs.doubleTapInterval] for this.
+     *
+     * See: https://github.com/ankitects/anki/blob/d036c2ade428b65d47c677bf3887a7402312c5c5/ts/routes/deck-options/ParamsInput.svelte
+     */
+    private fun setParameterUnlockClickTimeout() {
+        val minimumTimeoutMs = Prefs.doubleTapInterval
+        // The setter and default are only defined while `ParamsInput` is mounted, which requires
+        // FSRS to be enabled, and are reassigned each time it mounts.
+        // Intercept the assignments so this functionality works the first time someone enables
+        // FSRS.
+        webViewLayout.evaluateJavascript(
+            """
+            (() => {
+                globalThis.anki ||= {};
+                let setter = globalThis.anki.setParameterUnlockClickTimeoutMs;
+                const apply = () => {
+                    const defaultMs = globalThis.anki.defaultParameterUnlockClickTimeoutMs;
+                    if (setter === undefined || defaultMs === undefined) return;
+                    setter(Math.max(defaultMs, $minimumTimeoutMs));
+                };
+                Object.defineProperty(globalThis.anki, "setParameterUnlockClickTimeoutMs", {
+                    configurable: true,
+                    enumerable: true,
+                    get: () => setter,
+                    // the default is assigned after the setter: defer until both are defined
+                    set: (value) => { setter = value; queueMicrotask(apply); },
+                });
+                apply();
+            })();
+            """.trimIndent(),
+        )
     }
 
     companion object {
+        private const val KEY_DECK_ID = "deckId"
+
         fun getIntent(
             context: Context,
             deckId: DeckId,
-        ): Intent {
-            val title = context.getString(R.string.menu__deck_options)
-            return getIntent(context, "deck-options/$deckId", title, DeckOptions::class)
-        }
+        ): Intent =
+            SingleFragmentActivity.getIntent(
+                context,
+                fragmentClass = DeckOptions::class,
+                arguments = Bundle().apply { putLong(KEY_DECK_ID, deckId) },
+            )
     }
 }
 
@@ -255,7 +295,9 @@ suspend fun FragmentActivity.updateDeckConfigsRaw(input: ByteArray): ByteArray {
         withContext(Dispatchers.Main) {
             withProgress(
                 extractProgress = {
-                    text = this.toOptimizingPresetString() ?: getString(R.string.dialog_processing)
+                    // TODO: Don't use the amount yet, unused as a progress indicator, and
+                    //  duplicates computeMemory's label
+                    text = this.toProgressText() ?: getString(R.string.dialog_processing)
                 },
             ) {
                 withContext(Dispatchers.IO) {
@@ -269,28 +311,39 @@ suspend fun FragmentActivity.updateDeckConfigsRaw(input: ByteArray): ByteArray {
 }
 
 /**
+ * Returns a string indicating progress, such as:
+ *
  * ```
  * Optimizing preset 1/20
  * 5.2% of 1000 reviews
  * ```
  *
- * @return the above string, or `null` if [ProgressContext] has no
- * [compute parameters][Progress.hasComputeParams]
+ * @return the above string, or `null` if a string could not be generated
  */
-private fun ProgressContext.toOptimizingPresetString(): String? {
-    if (!progress.hasComputeParams()) return null
+private fun ProgressContext.toProgressText(): String? =
+    when {
+        progress.hasComputeParams() -> progress.computeParams.toProgressText()
+        progress.hasComputeMemory() -> progress.computeMemory.label // Updating cards: X/Y...
+        else -> null
+    }
 
-    val value = progress.computeParams
+/**
+ * ```
+ * Optimizing preset 1/20
+ * 5.2% of 1000 reviews
+ * ```
+ */
+private fun ComputeParamsProgress.toProgressText(): String {
     val label =
         TR.deckConfigOptimizingPreset(
-            currentCount = value.currentPreset,
-            totalCount = value.totalPresets,
+            currentCount = currentPreset,
+            totalCount = totalPresets,
         )
-    val pct = if (value.total > 0) (value.current.toDouble() / value.total.toDouble() * 100.0) else 0.0
+    val pct = if (total > 0) (current.toDouble() / total.toDouble() * 100.0) else 0.0
     val reviewsLabel =
         TR.deckConfigPercentOfReviews(
             pct = "%.1f".format(pct),
-            reviews = value.reviews,
+            reviews = reviews,
         )
     return label + "\n" + reviewsLabel
 }

@@ -1,18 +1,6 @@
-/*
- *  Copyright (c) 2022 Brayan Oliveira <brayandso.dev@gmail.com>
- *
- *  This program is free software; you can redistribute it and/or modify it under
- *  the terms of the GNU General Public License as published by the Free Software
- *  Foundation; either version 3 of the License, or (at your option) any later
- *  version.
- *
- *  This program is distributed in the hope that it will be useful, but WITHOUT ANY
- *  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
- *  PARTICULAR PURPOSE. See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with
- *  this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-FileCopyrightText: Copyright (c) 2022 Brayan Oliveira <brayandso.dev@gmail.com>
+
 package com.ichi2.anki.preferences
 
 import android.content.ActivityNotFoundException
@@ -24,17 +12,19 @@ import androidx.preference.ListPreference
 import androidx.preference.Preference
 import androidx.preference.SwitchPreferenceCompat
 import com.ichi2.anki.CollectionManager
+import com.ichi2.anki.CollectionManager.TR
 import com.ichi2.anki.R
+import com.ichi2.anki.common.utils.android.showThemedToast
+import com.ichi2.anki.common.utils.android.systemIsInNightMode
 import com.ichi2.anki.deckpicker.BackgroundImage
 import com.ichi2.anki.deckpicker.BackgroundImage.FileSizeResult
 import com.ichi2.anki.launchCatchingTask
 import com.ichi2.anki.settings.Prefs
-import com.ichi2.anki.showThemedToast
+import com.ichi2.anki.settings.enums.AppTheme
 import com.ichi2.anki.snackbar.showSnackbar
+import com.ichi2.anki.ui.internationalization.sentenceCase
 import com.ichi2.anki.utils.CollectionPreferences
-import com.ichi2.themes.Theme
 import com.ichi2.themes.Themes
-import com.ichi2.themes.Themes.systemIsInNightMode
 import com.ichi2.themes.Themes.updateCurrentTheme
 import com.ichi2.utils.negativeButton
 import com.ichi2.utils.positiveButton
@@ -51,15 +41,18 @@ class AppearanceSettingsFragment : SettingsFragment() {
         get() = "prefs.appearance"
 
     override fun initSubscreen() {
+        preferenceScreen.title = TR.preferencesAppearance()
+
         // Configure background
         backgroundImage = requirePreference<Preference>("deckPickerBackground")
+        backgroundImage!!.title = TR.sentenceCase.selectImage
         removeBackgroundPref = requirePreference<Preference>("removeWallPaper")
         backgroundImage!!.onPreferenceClickListener =
             Preference.OnPreferenceClickListener {
                 try {
                     backgroundImageResultLauncher.launch("image/*")
                 } catch (ex: ActivityNotFoundException) {
-                    Timber.w("No app found to handle background preference change request")
+                    Timber.w(ex, "No app found to handle background preference change request")
                     activity?.showSnackbar(R.string.activity_start_failed)
                 }
                 true
@@ -71,56 +64,6 @@ class AppearanceSettingsFragment : SettingsFragment() {
 
         // Initially update visibility based on whether a background exists
         updateRemoveBackgroundVisibility()
-
-        val appThemePref = requirePreference<ListPreference>(R.string.app_theme_key)
-        val dayThemePref = requirePreference<ListPreference>(R.string.day_theme_key)
-        val nightThemePref = requirePreference<ListPreference>(R.string.night_theme_key)
-        val themeIsFollowSystem = appThemePref.value == Themes.FOLLOW_SYSTEM_MODE
-
-        // Remove follow system options in android versions which do not have system dark mode
-        // When minSdk reaches 29, the only necessary change is to remove this if-block
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            dayThemePref.isVisible = false
-            nightThemePref.isVisible = false
-
-            // Drop "Follow system" option (the first one)
-            appThemePref.entries = resources.getStringArray(R.array.app_theme_labels).drop(1).toTypedArray()
-            appThemePref.entryValues = resources.getStringArray(R.array.app_theme_values).drop(1).toTypedArray()
-            if (themeIsFollowSystem) {
-                appThemePref.value = Theme.fallback.id
-            }
-        }
-        dayThemePref.isEnabled = themeIsFollowSystem
-        nightThemePref.isEnabled = themeIsFollowSystem
-
-        appThemePref.setOnPreferenceChangeListener { newValue ->
-            val selectedThemeIsFollowSystem = newValue == Themes.FOLLOW_SYSTEM_MODE
-            dayThemePref.isEnabled = selectedThemeIsFollowSystem
-            nightThemePref.isEnabled = selectedThemeIsFollowSystem
-
-            // Only restart if theme has changed
-            if (newValue != appThemePref.value) {
-                val previousThemeId = Themes.currentTheme.id
-                appThemePref.value = newValue.toString()
-                updateCurrentTheme(requireContext())
-
-                if (previousThemeId != Themes.currentTheme.id) {
-                    ActivityCompat.recreate(requireActivity())
-                }
-            }
-        }
-
-        dayThemePref.setOnPreferenceChangeListener { newValue ->
-            if (newValue != dayThemePref.value && !systemIsInNightMode(requireContext()) && newValue != Themes.currentTheme.id) {
-                ActivityCompat.recreate(requireActivity())
-            }
-        }
-
-        nightThemePref.setOnPreferenceChangeListener { newValue ->
-            if (newValue != nightThemePref.value && systemIsInNightMode(requireContext()) && newValue != Themes.currentTheme.id) {
-                ActivityCompat.recreate(requireActivity())
-            }
-        }
 
         // Show estimate time
         // Represents the collection pref "estTime": i.e.
@@ -151,6 +94,7 @@ class AppearanceSettingsFragment : SettingsFragment() {
             }
         }
 
+        setupThemePreferences()
         setupNewStudyScreenSettings()
     }
 
@@ -170,6 +114,60 @@ class AppearanceSettingsFragment : SettingsFragment() {
                 }
             }
             negativeButton(R.string.dialog_keep)
+        }
+    }
+
+    private fun setupThemePreferences() {
+        val appTheme = Prefs.appTheme
+        val appThemePref = requirePreference<ListPreference>(R.string.app_theme_key)
+        val dayThemePref = requirePreference<ListPreference>(R.string.day_theme_key)
+        val nightThemePref = requirePreference<ListPreference>(R.string.night_theme_key)
+
+        dayThemePref.isEnabled = appTheme != AppTheme.NIGHT
+        nightThemePref.isEnabled = appTheme != AppTheme.DAY
+
+        // Remove follow system options in android versions which do not have system dark mode
+        // When minSdk reaches 29, the only necessary change is to remove this if-block
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            // Drop "Follow system" option (the first one)
+            appThemePref.entries = resources.getStringArray(R.array.app_theme_labels).drop(1).toTypedArray()
+            appThemePref.entryValues = resources.getStringArray(R.array.app_theme_values).drop(1).toTypedArray()
+            if (appTheme == AppTheme.FOLLOW_SYSTEM) {
+                appThemePref.value = getString(Themes.currentTheme.entryResId)
+            }
+        }
+
+        appThemePref.setOnPreferenceChangeListener { newValue ->
+            if (newValue != appThemePref.value) {
+                val previousThemeId = Themes.currentTheme.styleResId
+                appThemePref.value = newValue
+                updateCurrentTheme(requireContext())
+
+                if (previousThemeId != Themes.currentTheme.styleResId) {
+                    ActivityCompat.recreate(requireActivity())
+                } else {
+                    dayThemePref.isEnabled = newValue != getString(AppTheme.NIGHT.entryResId)
+                    nightThemePref.isEnabled = newValue != getString(AppTheme.DAY.entryResId)
+                }
+            }
+        }
+
+        dayThemePref.setOnPreferenceChangeListener { newValue ->
+            if (
+                newValue != dayThemePref.value &&
+                (appTheme == AppTheme.DAY || (appTheme == AppTheme.FOLLOW_SYSTEM && !systemIsInNightMode(requireContext())))
+            ) {
+                ActivityCompat.recreate(requireActivity())
+            }
+        }
+
+        nightThemePref.setOnPreferenceChangeListener { newValue ->
+            if (
+                newValue != nightThemePref.value &&
+                (appTheme == AppTheme.NIGHT || (appTheme == AppTheme.FOLLOW_SYSTEM && systemIsInNightMode(requireContext())))
+            ) {
+                ActivityCompat.recreate(requireActivity())
+            }
         }
     }
 

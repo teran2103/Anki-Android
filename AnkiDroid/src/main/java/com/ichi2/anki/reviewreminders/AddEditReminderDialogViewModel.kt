@@ -1,18 +1,5 @@
-/*
- *  Copyright (c) 2025 Eric Li <ericli3690@gmail.com>
- *
- *  This program is free software; you can redistribute it and/or modify it under
- *  the terms of the GNU General Public License as published by the Free Software
- *  Foundation; either version 3 of the License, or (at your option) any later
- *  version.
- *
- *  This program is distributed in the hope that it will be useful, but WITHOUT ANY
- *  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
- *  PARTICULAR PURPOSE. See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with
- *  this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-FileCopyrightText: Copyright (c) 2025 Eric Li <ericli3690@gmail.com>
 
 package com.ichi2.anki.reviewreminders
 
@@ -20,7 +7,7 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
-import com.ichi2.anki.ALL_DECKS_ID
+import com.ichi2.anki.common.ALL_DECKS_ID
 import com.ichi2.anki.libanki.Consts
 import com.ichi2.anki.libanki.DeckId
 import timber.log.Timber
@@ -39,7 +26,7 @@ class AddEditReminderDialogViewModel(
      */
     private val dialogMode =
         requireNotNull(
-            savedStateHandle.get<AddEditReminderDialog.DialogMode>(AddEditReminderDialog.DIALOG_MODE_ARGUMENTS_KEY),
+            savedStateHandle.get<AddEditReminderDialog.DialogMode>(AddEditReminderDialog.ARG_DIALOG_MODE),
         ) { "dialogMode is required" }
 
     private val _time =
@@ -89,26 +76,40 @@ class AddEditReminderDialogViewModel(
         )
     val cardTriggerThreshold: LiveData<Int> = _cardTriggerThreshold
 
+    private val _onlyNotifyIfNoReviews =
+        MutableLiveData(
+            when (dialogMode) {
+                is AddEditReminderDialog.DialogMode.Add -> INITIAL_ONLY_NOTIFY_IF_NO_REVIEWS
+                is AddEditReminderDialog.DialogMode.Edit -> dialogMode.reminderToBeEdited.onlyNotifyIfNoReviews
+            },
+        )
+    val onlyNotifyIfNoReviews: LiveData<Boolean> = _onlyNotifyIfNoReviews
+
     private val _advancedSettingsOpen = MutableLiveData(INITIAL_ADVANCED_SETTINGS_OPEN)
     val advancedSettingsOpen: LiveData<Boolean> = _advancedSettingsOpen
 
     fun setTime(time: ReviewReminderTime) {
-        Timber.d("Updated time to %s", time)
+        Timber.i("Updated time to %s", time)
         _time.value = time
     }
 
     fun setDeckSelected(deckId: DeckId) {
-        Timber.d("Updated deck selected to %s", deckId)
+        Timber.i("Updated deck selected to %s", deckId)
         _deckSelected.value = deckId
     }
 
     fun setCardTriggerThreshold(threshold: Int) {
-        Timber.d("Updated card trigger threshold to %s", threshold)
+        Timber.i("Updated card trigger threshold to %s", threshold)
         _cardTriggerThreshold.value = threshold
     }
 
+    fun toggleOnlyNotifyIfNoReviews() {
+        Timber.i("Toggled onlyNotifyIfNoReviews from %s", _onlyNotifyIfNoReviews.value)
+        _onlyNotifyIfNoReviews.value = !(_onlyNotifyIfNoReviews.value ?: false)
+    }
+
     fun toggleAdvancedSettingsOpen() {
-        Timber.d("Toggled advanced settings open from %s", _advancedSettingsOpen.value)
+        Timber.i("Toggled advanced settings open from %s", _advancedSettingsOpen.value)
         _advancedSettingsOpen.value = !(_advancedSettingsOpen.value ?: false)
     }
 
@@ -136,6 +137,7 @@ class AddEditReminderDialogViewModel(
                     is AddEditReminderDialog.DialogMode.Add -> true
                     is AddEditReminderDialog.DialogMode.Edit -> dialogMode.reminderToBeEdited.enabled
                 },
+            onlyNotifyIfNoReviews = onlyNotifyIfNoReviews.value ?: INITIAL_ONLY_NOTIFY_IF_NO_REVIEWS,
         )
 
     companion object {
@@ -147,6 +149,13 @@ class AddEditReminderDialogViewModel(
          * This is an Int because that is what the EditText's inputType is.
          */
         private const val INITIAL_CARD_THRESHOLD: Int = 1
+
+        /**
+         * The default value for whether a notification should only be fired if no reviews have been done today
+         * for the corresponding deck / all decks. Since this is set to false, the default behaviour is that
+         * notifications will always be sent, regardless of whether reviews have been done today.
+         */
+        private const val INITIAL_ONLY_NOTIFY_IF_NO_REVIEWS = false
 
         /**
          * Whether the advanced settings dropdown is initially open.

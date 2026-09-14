@@ -1,18 +1,4 @@
-/*
- *  Copyright (c) 2025 David Allison <davidallisongithub@gmail.com>
- *
- *  This program is free software; you can redistribute it and/or modify it under
- *  the terms of the GNU General Public License as published by the Free Software
- *  Foundation; either version 3 of the License, or (at your option) any later
- *  version.
- *
- *  This program is distributed in the hope that it will be useful, but WITHOUT ANY
- *  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
- *  PARTICULAR PURPOSE. See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with
- *  this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 package com.ichi2.anki.browser
 
@@ -23,13 +9,11 @@ import androidx.activity.ComponentDialog
 import androidx.activity.OnBackPressedCallback
 import androidx.annotation.StringRes
 import androidx.core.os.BundleCompat
-import androidx.core.os.bundleOf
 import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.activityViewModels
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.google.android.material.appbar.MaterialToolbar
 import com.ichi2.anki.CardBrowser
 import com.ichi2.anki.CollectionManager.TR
 import com.ichi2.anki.R
@@ -38,16 +22,18 @@ import com.ichi2.anki.browser.BrowserColumnSelectionRecyclerItem.UsageItem
 import com.ichi2.anki.browser.ColumnUsage.ACTIVE
 import com.ichi2.anki.browser.ColumnUsage.AVAILABLE
 import com.ichi2.anki.common.annotations.NeedsTest
+import com.ichi2.anki.databinding.DialogBrowserColumnsSelectionBinding
 import com.ichi2.anki.dialogs.DiscardChangesDialog
+import com.ichi2.anki.launchCatchingTask
 import com.ichi2.anki.model.CardsOrNotes
 import com.ichi2.anki.snackbar.showSnackbar
-import kotlinx.coroutines.runBlocking
+import com.ichi2.anki.utils.ext.requireParcelable
+import com.ichi2.anki.withProgress
+import dev.androidbroadcast.vbpd.viewBinding
 import timber.log.Timber
 
 /**
  * Allows a user to select and reorder the visible columns for the [CardBrowser]
- *
- * As with AnkiMobile, a user may select up to 6 columns to display.
  *
  * A user may drag columns between 2 [sections][ColumnUsage]: 'Active' and 'Available'
  * A user may use the + or - buttons to quickly move an item between sections
@@ -64,24 +50,22 @@ import timber.log.Timber
 @NeedsTest("dismissing: save changes dialog")
 @NeedsTest("dismissing via 'save_columns'")
 @NeedsTest("instance state restoration")
-class BrowserColumnSelectionFragment : DialogFragment(R.layout.browser_columns_selection) {
+class BrowserColumnSelectionFragment : DialogFragment(R.layout.dialog_browser_columns_selection) {
     private val viewModel: CardBrowserViewModel by activityViewModels()
+
+    private val binding by viewBinding(DialogBrowserColumnsSelectionBinding::bind)
 
     lateinit var columnAdapter: BrowserColumnSelectionAdapter
 
     /** The columns which were selected when this dialog was opened */
     private lateinit var initiallySelectedColumns: List<CardBrowserColumn>
 
-    private lateinit var toolbar: MaterialToolbar
-
     private val onBackPressedDispatcher
         get() = (dialog as ComponentDialog).onBackPressedDispatcher
 
-    private val cardsOrNotes: CardsOrNotes
-        get() =
-            requireNotNull(
-                BundleCompat.getParcelable(requireArguments(), ARG_MODE, CardsOrNotes::class.java),
-            )
+    private val cardsOrNotes: CardsOrNotes by lazy {
+        requireArguments().requireParcelable(ARG_MODE)
+    }
 
     private val discardChangesCallback =
         object : OnBackPressedCallback(enabled = false) {
@@ -112,19 +96,20 @@ class BrowserColumnSelectionFragment : DialogFragment(R.layout.browser_columns_s
     ) {
         super.onViewCreated(view, savedInstanceState)
 
-        val (active, available) =
-            if (savedInstanceState == null) {
-                // TODO: runBlocking shouldn't be necessary here.
-                runBlocking { viewModel.previewColumnHeadings(cardsOrNotes) }
-            } else {
-                fun getSavedList(key: String) = BundleCompat.getParcelableArrayList(savedInstanceState, key, ColumnWithSample::class.java)!!
-
-                Pair(getSavedList(STATE_ACTIVE), getSavedList(STATE_AVAILABLE))
+        if (savedInstanceState == null) {
+            launchCatchingTask {
+                val (active, available) =
+                    withProgress {
+                        viewModel.previewColumnHeadings(cardsOrNotes)
+                    }
+                setupRecyclerView(active, available)
             }
-        setupRecyclerView(view, active, available)
+        } else {
+            fun getSavedList(key: String) = BundleCompat.getParcelableArrayList(savedInstanceState, key, ColumnWithSample::class.java)!!
+            setupRecyclerView(getSavedList(STATE_ACTIVE), getSavedList(STATE_AVAILABLE))
+        }
 
-        this.toolbar = view.findViewById(R.id.toolbar)
-        toolbar.setOnMenuItemClickListener { menuItem ->
+        binding.toolbar.setOnMenuItemClickListener { menuItem ->
             Timber.d("menu item click: %s", menuItem.title)
             when (menuItem.itemId) {
                 R.id.action_save_columns -> {
@@ -147,7 +132,7 @@ class BrowserColumnSelectionFragment : DialogFragment(R.layout.browser_columns_s
                 else -> false
             }
         }
-        toolbar.setNavigationOnClickListener {
+        binding.toolbar.setNavigationOnClickListener {
             Timber.d("navigation up clicked")
             onBackPressedDispatcher.onBackPressed()
         }
@@ -164,7 +149,6 @@ class BrowserColumnSelectionFragment : DialogFragment(R.layout.browser_columns_s
     }
 
     private fun setupRecyclerView(
-        view: View,
         active: List<ColumnWithSample>,
         available: List<ColumnWithSample>,
     ) {
@@ -221,7 +205,7 @@ class BrowserColumnSelectionFragment : DialogFragment(R.layout.browser_columns_s
             },
         )
 
-        view.findViewById<RecyclerView>(R.id.recycler_view).apply {
+        binding.recyclerView.apply {
             layoutManager = LinearLayoutManager(requireContext())
             this.adapter = columnAdapter
             itemTouchHelper.attachToRecyclerView(this)
@@ -242,9 +226,9 @@ class BrowserColumnSelectionFragment : DialogFragment(R.layout.browser_columns_s
             BrowserColumnSelectionFragment().apply {
                 Timber.d("Building 'Manage columns' dialog for %s mode", cardsOrNotes)
                 arguments =
-                    bundleOf(
-                        ARG_MODE to cardsOrNotes,
-                    )
+                    Bundle().apply {
+                        putParcelable(ARG_MODE, cardsOrNotes)
+                    }
             }
     }
 }

@@ -1,18 +1,6 @@
-/*
- *  Copyright (c) 2024 Brayan Oliveira <brayandso.dev@gmail.com>
- *
- *  This program is free software; you can redistribute it and/or modify it under
- *  the terms of the GNU General Public License as published by the Free Software
- *  Foundation; either version 3 of the License, or (at your option) any later
- *  version.
- *
- *  This program is distributed in the hope that it will be useful, but WITHOUT ANY
- *  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
- *  PARTICULAR PURPOSE. See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with
- *  this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-FileCopyrightText: Copyright (c) 2024 Brayan Oliveira <brayandso.dev@gmail.com>
+
 package com.ichi2.anki.worker
 
 import android.app.Notification
@@ -35,17 +23,17 @@ import anki.collection.Progress
 import anki.sync.SyncAuth
 import anki.sync.SyncCollectionResponse
 import anki.sync.syncAuth
-import com.ichi2.anki.Channel
 import com.ichi2.anki.CollectionManager
 import com.ichi2.anki.CollectionManager.TR
 import com.ichi2.anki.CollectionManager.withCol
+import com.ichi2.anki.NotificationChannel
 import com.ichi2.anki.R
 import com.ichi2.anki.cancelSync
+import com.ichi2.anki.common.permissions.canPostNotifications
 import com.ichi2.anki.notifications.NotificationId
 import com.ichi2.anki.setLastSyncTimeToNow
 import com.ichi2.anki.settings.Prefs
 import com.ichi2.anki.utils.ext.trySetForeground
-import com.ichi2.utils.Permissions
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -74,7 +62,7 @@ class SyncWorker(
     private val workManager = WorkManager.getInstance(context)
     private val cancelIntent = WorkManager.getInstance(context).createCancelPendingIntent(id)
     private val notificationManager: NotificationManagerCompat? =
-        if (Permissions.canPostNotifications(context)) {
+        if (canPostNotifications(context)) {
             NotificationManagerCompat.from(context)
         } else {
             null
@@ -99,19 +87,23 @@ class SyncWorker(
         try {
             syncCollection(auth, shouldSyncMedia)
         } catch (cancellationException: CancellationException) {
+            Timber.w(cancellationException, "SyncWorker cancelled (user tapped Cancel or WorkManager cancelled)")
+            notificationManager?.cancel(NotificationId.SYNC)
+            Timber.d("SyncWorker: progress notification cancelled after worker cancellation")
             cancelSync(CollectionManager.getBackend())
             throw cancellationException
         } catch (throwable: Throwable) {
-            Timber.w(throwable)
+            Timber.w(throwable, "SyncWorker failed")
             notify {
                 setContentTitle(applicationContext.getString(R.string.sync_error))
                 throwable.localizedMessage?.let { message ->
                     setContentText(message)
                 }
             }
+            Timber.d("SyncWorker: showing failure notification")
             return Result.failure()
         }
-        Timber.d("SyncWorker: cancelling notification")
+        Timber.d("SyncWorker: cancelling progress notification (sync completed)")
         notificationManager?.cancel(NotificationId.SYNC)
 
         Timber.d("SyncWorker: success")
@@ -217,7 +209,7 @@ class SyncWorker(
 
     private fun buildNotification(block: NotificationCompat.Builder.() -> Unit): Notification =
         NotificationCompat
-            .Builder(applicationContext, Channel.SYNC.id)
+            .Builder(applicationContext, NotificationChannel.SYNC.id)
             .apply {
                 priority = NotificationCompat.PRIORITY_LOW
                 setSmallIcon(R.drawable.ic_star_notify)

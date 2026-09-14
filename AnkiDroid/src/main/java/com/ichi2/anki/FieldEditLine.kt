@@ -1,18 +1,5 @@
-/*
- *  Copyright (c) 2020 David Allison <davidallisongithub@gmail.com>
- *
- *  This program is free software; you can redistribute it and/or modify it under
- *  the terms of the GNU General Public License as published by the Free Software
- *  Foundation; either version 3 of the License, or (at your option) any later
- *  version.
- *
- *  This program is distributed in the hope that it will be useful, but WITHOUT ANY
- *  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
- *  PARTICULAR PURPOSE. See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with
- *  this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package com.ichi2.anki
 
 import android.content.Context
@@ -23,7 +10,6 @@ import android.os.Parcelable
 import android.os.Parcelable.ClassLoaderCreator
 import android.util.AttributeSet
 import android.util.SparseArray
-import android.view.AbsSavedState
 import android.view.ActionMode
 import android.view.LayoutInflater
 import android.view.View
@@ -32,16 +18,17 @@ import androidx.annotation.DrawableRes
 import androidx.constraintlayout.widget.ConstraintSet
 import androidx.core.os.ParcelCompat
 import androidx.vectordrawable.graphics.drawable.VectorDrawableCompat
+import com.ichi2.anki.common.utils.android.getDensityAdjustedValue
 import com.ichi2.anki.common.utils.annotation.KotlinCleanup
-import com.ichi2.anki.databinding.CardMultimediaEditlineBinding
-import com.ichi2.compat.setTooltipTextCompat
+import com.ichi2.anki.compat.setTooltipTextCompat
+import com.ichi2.anki.databinding.ViewCardMultimediaEditlineBinding
 import com.ichi2.ui.AnimationUtil.collapseView
 import com.ichi2.ui.AnimationUtil.expandView
 import java.util.Locale
 
 @KotlinCleanup("replace _name with `field`")
 class FieldEditLine : FrameLayout {
-    val binding = CardMultimediaEditlineBinding.inflate(LayoutInflater.from(context), this, true)
+    val binding = ViewCardMultimediaEditlineBinding.inflate(LayoutInflater.from(context), this, true)
     private var _name: String? = null
     private var expansionState = ExpansionState.EXPANDED
 
@@ -135,10 +122,6 @@ class FieldEditLine : FrameLayout {
 
     val lastViewInTabOrder: View
         get() = binding.expandButton
-
-    fun loadState(state: AbsSavedState) {
-        onRestoreInstanceState(state)
-    }
 
     override fun dispatchSaveInstanceState(container: SparseArray<Parcelable>) {
         dispatchFreezeSelfOnly(container)

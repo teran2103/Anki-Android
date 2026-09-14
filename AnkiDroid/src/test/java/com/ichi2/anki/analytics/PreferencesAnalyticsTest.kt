@@ -1,21 +1,10 @@
-/*
- *  Copyright (c) 2023 Brayan Oliveira <brayandso.dev@gmail.com>
- *
- *  This program is free software; you can redistribute it and/or modify it under
- *  the terms of the GNU General Public License as published by the Free Software
- *  Foundation; either version 3 of the License, or (at your option) any later
- *  version.
- *
- *  This program is distributed in the hope that it will be useful, but WITHOUT ANY
- *  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
- *  PARTICULAR PURPOSE. See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with
- *  this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-FileCopyrightText: Copyright (c) 2023 Brayan Oliveira <brayandso.dev@gmail.com>
+
 package com.ichi2.anki.analytics
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.ichi2.anki.EmptyApplicationCategory
 import com.ichi2.anki.R
 import com.ichi2.anki.RobolectricTest
 import com.ichi2.anki.preferences.PreferenceTestUtils
@@ -24,28 +13,30 @@ import com.ichi2.testutils.EmptyApplication
 import org.hamcrest.MatcherAssert.assertThat
 import org.hamcrest.Matchers
 import org.junit.Test
+import org.junit.experimental.categories.Category
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 import kotlin.test.assertNull
 
 @RunWith(AndroidJUnit4::class)
 @Config(application = EmptyApplication::class)
+@Category(EmptyApplicationCategory::class)
 class PreferencesAnalyticsTest : RobolectricTest() {
-    private val devOptionsKeys = PreferenceTestUtils.getDevOptionsKeys(targetContext)
+    private val developerOptionsKeys = PreferenceTestUtils.getDeveloperOptionsKeys(targetContext)
 
     /** All preference keys besides dev options */
     private val allKeys =
         PreferenceTestUtils
             .getAllPreferenceKeys(targetContext)
-            .subtract(devOptionsKeys)
+            .subtract(developerOptionsKeys)
 
-    private val reportableKeys = UsageAnalytics.reportablePrefKeys.toStringResourceSet()
+    private val reportableKeys = AnalyticsConstants.reportablePrefKeys.toStringResourceSet()
 
     /** Keys of preferences that shouldn't be reported */
     private val excludedPrefs: Set<String> =
         setOf(
             // Share feature usage: analytics are only reported if this is enabled :)
-            R.string.analytics_opt_in_key, // analytics_opt_in
+            R.string.analytics_opt_in_key, // analytics_opt_in_v2
             // Screens: don't have a value
             R.string.pref_general_screen_key, // generalScreen
             R.string.pref_reviewing_screen_key, // reviewingScreen
@@ -100,6 +91,10 @@ class PreferencesAnalyticsTest : RobolectricTest() {
             R.string.ignore_display_cutout_key, // ignoreDisplayCutout
             R.string.reviewer_toolbar_position_key, // reviewerToolbarPosition
             R.string.answer_button_size_pref_key, // answerBtnSize
+            // Security-sensitive settings (GHSL-2026-084)
+            R.string.pref_allow_dangerous_js_api, // allow_dangerous_js_api
+            // Security-sensitive settings (GHSL-2026-085)
+            R.string.pref_allow_card_external_launch_key, // allowCardExternalLaunch
         ).toStringResourceSet()
 
     @Test
@@ -148,14 +143,14 @@ class PreferencesAnalyticsTest : RobolectricTest() {
     }
 
     @Test
-    fun `Dev options changes must not be reported`() {
-        val devOptionsKeys = PreferenceTestUtils.getKeysFromXml(targetContext, R.xml.preferences_dev_options)
-        val devOptionsAtReportList = reportableKeys.intersect(devOptionsKeys.toSet())
+    fun `Developer options changes must not be reported`() {
+        val developerOptionsKeys = PreferenceTestUtils.getKeysFromXml(targetContext, R.xml.preferences_developer_options)
+        val developerOptionsAtReportList = reportableKeys.intersect(developerOptionsKeys.toSet())
 
         assertThat(
             "dev options keys must not be in the `reportableKeys` list" +
-                ": $devOptionsAtReportList",
-            devOptionsAtReportList.isEmpty(),
+                ": $developerOptionsAtReportList",
+            developerOptionsAtReportList.isEmpty(),
         )
     }
 

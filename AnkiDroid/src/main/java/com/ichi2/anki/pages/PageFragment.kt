@@ -15,8 +15,6 @@
  */
 package com.ichi2.anki.pages
 
-import android.content.Context
-import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import android.webkit.JavascriptInterface
@@ -25,28 +23,28 @@ import android.webkit.WebViewClient
 import androidx.annotation.CallSuper
 import androidx.annotation.LayoutRes
 import androidx.core.net.toUri
-import androidx.core.os.bundleOf
 import androidx.fragment.app.Fragment
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.progressindicator.CircularProgressIndicator
 import com.ichi2.anki.R
-import com.ichi2.anki.SingleFragmentActivity
 import com.ichi2.anki.workarounds.OnWebViewRecreatedListener
 import com.ichi2.anki.workarounds.SafeWebViewLayout
 import com.ichi2.themes.Themes
+import com.ichi2.utils.WebViewVersion
+import com.ichi2.utils.showDialogIfWebViewOutdated
 import timber.log.Timber
-import kotlin.reflect.KClass
 
 /**
  * Base class for displaying Anki HTML pages
  */
-open class PageFragment(
-    @LayoutRes contentLayoutId: Int = R.layout.page_fragment,
+abstract class PageFragment(
+    @LayoutRes contentLayoutId: Int = R.layout.fragment_page,
 ) : Fragment(contentLayoutId),
     PostRequestHandler,
     OnWebViewRecreatedListener {
     lateinit var webViewLayout: SafeWebViewLayout
     private lateinit var server: AnkiServer
+    protected abstract val pagePath: String
 
     /**
      * A loading indicator for the page. May be shown before the WebView is loaded to
@@ -67,6 +65,8 @@ open class PageFragment(
     protected open fun onCreateWebViewClient(savedInstanceState: Bundle?) = PageWebViewClient()
 
     protected open fun onWebViewCreated() { }
+
+    protected open val minimumWebViewVersion: WebViewVersion? = null
 
     /**
      * When the webview calls `BridgeCommand("foo")`, the PageFragment execute `bridgeCommands["foo"]`.
@@ -107,16 +107,21 @@ open class PageFragment(
         server = AnkiServer(this).also { it.start() }
         webViewLayout = view.findViewById(R.id.webview_layout)
 
-        val title = requireArguments().getString(TITLE_ARG_KEY)
-        view.findViewById<MaterialToolbar>(R.id.toolbar)?.apply {
-            if (title != null) {
-                setTitle(title)
-            }
-            setNavigationOnClickListener {
-                requireActivity().onBackPressedDispatcher.onBackPressed()
+        minimumWebViewVersion?.let { minVersion ->
+            val isOutdated =
+                with(requireContext()) {
+                    showDialogIfWebViewOutdated(minVersion) {
+                        requireActivity().finish()
+                    }
+                }
+            if (isOutdated) {
+                Timber.w("${this::class.simpleName} requires modern WebView version, aborting load")
+                return
             }
         }
-
+        view.findViewById<MaterialToolbar>(R.id.toolbar)?.setNavigationOnClickListener {
+            requireActivity().onBackPressedDispatcher.onBackPressed()
+        }
         setupWebView(savedInstanceState)
     }
 
@@ -135,9 +140,8 @@ open class PageFragment(
             setupBridgeCommand(pageWebViewClient)
             onWebViewCreated()
         }
-        val path = requireNotNull(requireArguments().getString(PATH_ARG_KEY)) { "'$PATH_ARG_KEY' missing" }
-        val nightMode = if (Themes.currentTheme.isNightMode) "#night" else ""
-        val url = "${server.baseUrl()}$path$nightMode".toUri()
+        val nightMode = if (Themes.isNightTheme) "#night" else ""
+        val url = "${server.baseUrl()}$pagePath$nightMode".toUri()
         Timber.i("Loading $url")
         webViewLayout.loadUrl(url.toString())
     }
@@ -173,20 +177,5 @@ open class PageFragment(
 
     override fun onWebViewRecreated(webView: WebView) {
         setupWebView(null)
-    }
-
-    companion object {
-        const val PATH_ARG_KEY = "path"
-        const val TITLE_ARG_KEY = "title"
-
-        fun getIntent(
-            context: Context,
-            path: String,
-            title: String? = null,
-            clazz: KClass<out PageFragment> = PageFragment::class,
-        ): Intent {
-            val arguments = bundleOf(PATH_ARG_KEY to path, TITLE_ARG_KEY to title)
-            return SingleFragmentActivity.getIntent(context, clazz, arguments)
-        }
     }
 }

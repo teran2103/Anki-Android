@@ -32,7 +32,6 @@
 package com.ichi2.anki.libanki
 
 import androidx.annotation.CheckResult
-import androidx.annotation.VisibleForTesting
 import anki.collection.OpChanges
 import anki.collection.OpChangesWithId
 import anki.notetypes.ChangeNotetypeInfo
@@ -51,7 +50,7 @@ import com.ichi2.anki.libanki.backend.BackendUtils
 import com.ichi2.anki.libanki.backend.BackendUtils.fromJsonBytes
 import com.ichi2.anki.libanki.backend.BackendUtils.toJsonBytes
 import com.ichi2.anki.libanki.utils.LibAnkiAlias
-import com.ichi2.anki.libanki.utils.NotInLibAnki
+import com.ichi2.anki.libanki.utils.NotInPyLib
 import com.ichi2.anki.libanki.utils.append
 import com.ichi2.anki.libanki.utils.index
 import com.ichi2.anki.libanki.utils.insert
@@ -68,7 +67,10 @@ import timber.log.Timber
 class NoteTypeNameID(
     val name: String,
     val id: NoteTypeId,
-)
+) {
+    // support extension
+    companion object
+}
 
 class Notetypes(
     val col: Collection,
@@ -146,8 +148,7 @@ class Notetypes(
      */
 
     /** Get current model.*/
-    @VisibleForTesting
-    @Deprecated("Use col.defaultsForAdding()")
+    @RustCleanup("Should use defaultsForAdding() instead")
     fun current(forDeck: Boolean = true): NotetypeJson {
         var noteType = get(col.decks.current().getLongOrNull("mid"))
         if (!forDeck || noteType == null) {
@@ -287,7 +288,7 @@ class Notetypes(
     ##################################################
      */
 
-    @NotInLibAnki
+    @NotInPyLib
     fun nids(model: NotetypeJson): List<NoteId> = nids(model.id)
 
     /** Note ids for M. */
@@ -563,10 +564,12 @@ class Notetypes(
      *
      * Each value represents the index in the previous notetype.
      * -1 indicates the original value will be discarded.
+     *
+     * **This method updates the schema without confirmation**
      */
     @LibAnkiAlias("change_notetype_of_notes")
     fun changeNotetypeOfNotes(input: ChangeNotetypeRequest): OpChanges {
-        val opBytes = this.col.backend.changeNotetypeRaw(input.toByteArray())
+        val opBytes = col.backend.changeNotetypeRaw(input.toByteArray())
         return OpChanges.parseFrom(opBytes)
     }
 
@@ -608,18 +611,9 @@ class Notetypes(
      *
      * A compatibility wrapper that converts legacy-style arguments and
      * feeds them into a backend request, so that AnkiDroid's editor-bound
-     * notetype changing can be used. Changing the notetype via the editor is
-     * not ideal: it doesn't let users re-order fields in a 2 element note,
-     * doesn't provide a warning to users about fields/cards that will be removed,
-     * and doesn't allow mapping one source field to multiple target fields. In
-     * the future, it may be worth removing this routine and exposing the
-     * change_notetype.html page to the user instead. The editor could remove
-     * the field-reordering code, and when saving a note where the notetype
-     * has been changed, the separate change_notetype screen could be shown.
-     * It would also be a good idea to expose change notetype as a bulk action
-     * in the browsing screen, so that the user can change the notetype of
-     * multiple notes at once.
+     * notetype changing can be used.
      * */
+    @Deprecated("Replace with ChangeNoteTypeDialog")
     fun change(
         noteType: NotetypeJson,
         nid: NoteId,
@@ -810,5 +804,5 @@ fun Collection.addNotetypeLegacy(json: ByteString): OpChangesWithId {
 fun Collection.getStockNotetype(kind: StockNotetype.Kind): NotetypeJson =
     NotetypeJson(fromJsonBytes(backend.getStockNotetypeLegacy(kind = kind)))
 
-@NotInLibAnki
+@NotInPyLib
 fun getStockNotetypeKinds(): List<StockNotetype.Kind> = StockNotetype.Kind.entries.filter { it != StockNotetype.Kind.UNRECOGNIZED }

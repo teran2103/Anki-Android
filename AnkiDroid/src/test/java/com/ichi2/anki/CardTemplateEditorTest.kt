@@ -1,18 +1,5 @@
-/****************************************************************************************
- * Copyright (c) 2020 Mike Hardy <mike@mikehardy.net>                                   *
- *                                                                                      *
- * This program is free software; you can redistribute it and/or modify it under        *
- * the terms of the GNU General Public License as published by the Free Software        *
- * Foundation; either version 3 of the License, or (at your option) any later           *
- * version.                                                                             *
- *                                                                                      *
- * This program is distributed in the hope that it will be useful, but WITHOUT ANY      *
- * WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A      *
- * PARTICULAR PURPOSE. See the GNU General Public License for more details.             *
- *                                                                                      *
- * You should have received a copy of the GNU General Public License along with         *
- * this program.  If not, see <http://www.gnu.org/licenses/>.                           *
- ****************************************************************************************/
+// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-FileCopyrightText: Copyright (c) 2020 Mike Hardy <mike@mikehardy.net>
 
 package com.ichi2.anki
 
@@ -20,19 +7,24 @@ import android.app.Activity
 import android.content.DialogInterface
 import android.content.Intent
 import android.os.Bundle
+import android.os.Looper
+import android.view.View
 import android.widget.EditText
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.ichi2.anki.CardTemplateEditor.CardTemplateFragment
 import com.ichi2.anki.CardTemplateEditor.CardTemplateFragment.CardTemplate
 import com.ichi2.anki.CollectionManager.withCol
 import com.ichi2.anki.dialogs.InsertFieldDialog
+import com.ichi2.anki.libanki.CardOrdinal
 import com.ichi2.anki.libanki.NotetypeJson
 import com.ichi2.anki.libanki.testutils.ext.addNote
 import com.ichi2.anki.model.SelectableDeck
 import com.ichi2.anki.notetype.ManageNoteTypesState.CardEditor
 import com.ichi2.anki.previewer.CardViewerActivity
+import com.ichi2.anki.previewer.TemplatePreviewerFragment
 import com.ichi2.anki.scheduling.selectTab
 import com.ichi2.testutils.assertFalse
-import com.ichi2.testutils.withTabletUi
+import com.ichi2.testutils.withSplitPaneUi
 import org.hamcrest.CoreMatchers.equalTo
 import org.hamcrest.MatcherAssert
 import org.hamcrest.MatcherAssert.assertThat
@@ -481,6 +473,7 @@ class CardTemplateEditorTest : RobolectricTest() {
                     .start()
                     .resume()
                     .visible()
+            saveControllerForCleanup(templateEditorController)
             testEditor = templateEditorController.get()
             shadowTestEditor = shadowOf(testEditor)
             assertFalse("Note type should not have changed yet", testEditor.noteTypeHasChanged())
@@ -692,6 +685,49 @@ class CardTemplateEditorTest : RobolectricTest() {
     }
 
     @Test
+    fun `ensure 'Discard changes' dialog is enabled after note type changes - Issue 18518`() {
+        fun assertDiscardChangesDialogShown(shadowEditor: ShadowActivity) {
+            advanceRobolectricLooper()
+            assertTrue("Unable to click?", shadowEditor.clickMenuItem(android.R.id.home))
+            advanceRobolectricLooper()
+            assertEquals("Wrong dialog shown?", "Discard changes?", getAlertDialogText(true))
+            clickAlertDialogButton(DialogInterface.BUTTON_POSITIVE, false)
+        }
+
+        // Case 1: Show dialog after deck override
+        withCardTemplateEditor {
+            val shadowEditor = shadowOf(this)
+            onDeckSelected(SelectableDeck.Deck(1, "hello"))
+            assertDiscardChangesDialogShown(shadowEditor)
+        }
+
+        // Case 2: Show dialog after changing card browser appearance
+        withCardTemplateEditor {
+            val shadowEditor = shadowOf(this)
+            assertTrue(
+                "Unable to click?",
+                shadowEditor.clickMenuItem(R.id.action_card_browser_appearance),
+            )
+            advanceRobolectricLooper()
+            shadowEditor.receiveResult(
+                shadowEditor.nextStartedActivity,
+                Activity.RESULT_OK,
+                Intent()
+                    .putExtra(CardTemplateBrowserAppearanceEditor.INTENT_QUESTION_FORMAT, "q")
+                    .putExtra(CardTemplateBrowserAppearanceEditor.INTENT_ANSWER_FORMAT, "a"),
+            )
+            assertDiscardChangesDialogShown(shadowEditor)
+        }
+
+        // Case 3: Show dialog after adding a card type
+        withCardTemplateEditor {
+            val shadowEditor = shadowOf(this)
+            addCardType(this, shadowEditor)
+            assertDiscardChangesDialogShown(shadowEditor)
+        }
+    }
+
+    @Test
     fun testContentPreservedAfterChangingEditorView() {
         val noteTypeName = "Basic"
 
@@ -725,6 +761,23 @@ class CardTemplateEditorTest : RobolectricTest() {
 
         // check if current content is updated or not
         assumeThat(templateEditText.text.toString(), Matchers.equalTo(updatedFrontContent))
+    }
+
+    @Test
+    fun testSaveButtonEnabledAfterException() {
+        withCardTemplateEditor(noteType = col.notetypes.cloze) {
+            editText.setText("New Random Template Text")
+
+            // throw an exception to simulate failure
+            this.tempNoteType = null
+
+            confirmButton.performClick()
+
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertTrue("Button should be clickable after failure", confirmButton.isClickable)
+            assertTrue("Button should be enabled after failure", confirmButton.isEnabled)
+        }
     }
 
     @Test
@@ -790,7 +843,8 @@ class CardTemplateEditorTest : RobolectricTest() {
 
         val firstFragment = testEditor.currentFragment
         assertNotNull("First fragment should exist", firstFragment)
-        val firstTemplateEditText = testEditor.findViewById<EditText>(R.id.edit_text)
+        // Use fragment's view to get EditText (activity.findViewById may return wrong view with offscreenPageLimit)
+        val firstTemplateEditText = firstFragment!!.requireView().findViewById<EditText>(R.id.edit_text)
         val originalFirstContent = firstTemplateEditText.text.toString()
 
         // Navigate to second fragment (Card 2)
@@ -799,7 +853,8 @@ class CardTemplateEditorTest : RobolectricTest() {
 
         val secondFragment = testEditor.currentFragment
         assertNotNull("Second fragment should exist", secondFragment)
-        val secondTemplateEditText = testEditor.findViewById<EditText>(R.id.edit_text)
+        // Use fragment's view to get EditText (activity.findViewById may return wrong view with offscreenPageLimit)
+        val secondTemplateEditText = secondFragment!!.requireView().findViewById<EditText>(R.id.edit_text)
         val originalSecondContent = secondTemplateEditText.text.toString()
 
         // Navigate back to first fragment
@@ -819,7 +874,7 @@ class CardTemplateEditorTest : RobolectricTest() {
         advanceRobolectricLooper()
 
         val resultBundle = Bundle()
-        resultBundle.putString(InsertFieldDialog.KEY_INSERTED_FIELD, fieldToInsert)
+        resultBundle.putString(InsertFieldDialog.KEY_INSERTED_FIELD, expectedFieldText)
         testEditor.supportFragmentManager.setFragmentResult(firstFragmentAgain.insertFieldRequestKey, resultBundle)
         advanceRobolectricLooper()
 
@@ -838,7 +893,10 @@ class CardTemplateEditorTest : RobolectricTest() {
         testEditor.viewPager.currentItem = 1
         advanceRobolectricLooper()
 
-        val secondTemplateEditTextAfter = testEditor.findViewById<EditText>(R.id.edit_text)
+        // Use currentFragment's view to get EditText
+        val secondFragmentAfter = testEditor.currentFragment
+        assertNotNull("Second fragment should exist after navigation", secondFragmentAfter)
+        val secondTemplateEditTextAfter = secondFragmentAfter!!.requireView().findViewById<EditText>(R.id.edit_text)
         val secondContentAfter = secondTemplateEditTextAfter.text.toString()
 
         assertEquals(
@@ -854,7 +912,7 @@ class CardTemplateEditorTest : RobolectricTest() {
 
     @Test
     fun `tab changes succeed with tablet UI - Issue 19589`() =
-        withTabletUi {
+        withSplitPaneUi {
             withCardTemplateEditor(col.notetypes.basicAndReversed) {
                 selectTab(1)
                 selectTab(0)
@@ -862,6 +920,34 @@ class CardTemplateEditorTest : RobolectricTest() {
                 assertThat(selectedTabPosition, equalTo(0))
             }
         }
+
+    @Test
+    fun `correct ord is previewed after tab change - tablet ui - issue 20097`() =
+        withSplitPaneUi {
+            withCardTemplateEditor(col.notetypes.basicAndReversed) {
+                selectTab(1)
+
+                assertThat(previewer.ord, equalTo(1))
+            }
+        }
+
+    @Test
+    fun `the current card is focused`() {
+        withCardTemplateEditor(noteType = getCurrentDatabaseNoteTypeCopy("Basic (and reversed card)")) {
+            advanceRobolectricLooper()
+            assertThat("card 1 is focused on open", window.decorView.findFocus(), equalTo(templateFragment(0).binding.editText))
+
+            selectTab(1)
+            advanceRobolectricLooper()
+            assertThat("card 2 is focused once selected", window.decorView.findFocus(), equalTo(templateFragment(1).binding.editText))
+
+            selectTab(0)
+            advanceRobolectricLooper()
+            assertThat("card 1 is focused again", window.decorView.findFocus(), equalTo(templateFragment(0).binding.editText))
+        }
+    }
+
+    private fun CardTemplateEditor.templateFragment(ord: Int) = supportFragmentManager.findFragmentByTag("f$ord") as CardTemplateFragment
 
     private fun addCardType(
         testEditor: CardTemplateEditor,
@@ -957,3 +1043,12 @@ fun RobolectricTest.withCardTemplateEditor(
 fun CardTemplateEditor.selectTab(index: Int) = topBinding.slidingTabs.selectTab(index)
 
 val CardTemplateEditor.selectedTabPosition: Int get() = topBinding.slidingTabs.selectedTabPosition
+
+val CardTemplateEditor.previewer: TemplatePreviewerFragment
+    get() = this.supportFragmentManager.findFragmentById(R.id.fragment_container) as TemplatePreviewerFragment
+
+val TemplatePreviewerFragment.ord: CardOrdinal
+    get() = this.viewModel.ordFlow.value
+
+val CardTemplateEditor.confirmButton: View
+    get() = findViewById(R.id.action_confirm)
